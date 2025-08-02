@@ -13,14 +13,39 @@ import (
 	"time"
 )
 
+// /tmp/
+//  ├── checkpoint-sessions/
+//  │   	├── a1b2c3d4e5f6g7h8/      	# App A's session
+//  │   	│  	├── overlays/
+//  │   	│  	│ 	├── current/
+//  │   	│  	│ 	│   ├── upper/			# Overlay upper directory
+//  │   	│  	│ 	│   └── work/ 			# Overlay work directory
+//  │   	│  	│   └── ckpt-1/        	# Checkpoint ckpt-1
+//  │   	│  	│       ├── upper/        	# Filesystem state
+//  │   	│  	│       └── work/         	# Work directory
+//  │   	│   ├── criu/
+//  │   	│   │ 	└── ckpt-1/        	# Checkpoint ckpt-1
+//  │   	│  	│       └── *.img        	# CRIU image files
+//  │   	│   ├── metadata/			# Checkpoint metadata
+//  │   	│   │  └── ckpt-1.json			# "Metadata" for ckpt-1
+//  │   	│   └── work/           	# App A works here
+//  │   	└── x9y8z7w6v5u4t3s2/         	# App B's session
+//  │       	├── overlays/
+//  │       	├── criu/
+//  │       	├── metadata/
+//  │       	└── work/                  	# App B works here
+//  └── checkpoint-sessions-info/      	# Global session registry
+// 		 ├── a1b2c3d4e5f6g7h8.json			# "SessionInfo" for App A
+// 		 └── x9y8z7w6v5u4t3s2.json
+
 type Manager struct {
-	baseDir     string
-	overlayDir  string
+	baseDir     string // Base directory for this session, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8
+	overlayDir  string // Directory for overlay layers, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/overlays
 	criuDir     string
-	metadataDir string
-	workOverlay string // Current working overlay mount point
-	originalDir string // Original directory being managed
-	sessionID   string // Unique session identifier
+	metadataDir string // Directory for metadata files, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/metadata
+	workOverlay string // Current working overlay mount point, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
+	originalDir string // Original directory being managed, e.g., /home/user/app-data
+	sessionID   string // Unique session identifier, e.g., a1b2c3d4e5f6g7h8
 }
 
 type Metadata struct {
@@ -49,22 +74,6 @@ func generateSessionID() (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
-
-// /tmp/
-// ├── checkpoint-sessions/           # Individual session directories
-// │   	├── a1b2c3d4e5f6g7h8/         # App A's session
-// │   	│  	├── overlays/
-// │   	│   ├── criu/
-// │   	│   ├── metadata/
-// │   	│   └── work/                  # App A works here
-// │   	└── x9y8z7w6v5u4t3s2/         # App B's session
-// │       	├── overlays/
-// │       	├── criu/
-// │       	├── metadata/
-// │       	└── work/                  # App B works here
-// └── checkpoint-sessions-info/      # Global session registry
-// 		├── a1b2c3d4e5f6g7h8.json
-// 		└── x9y8z7w6v5u4t3s2.json
 
 // NewManagerWithSession creates a new manager with a random session ID
 func NewManagerWithSession() (*Manager, string, error) {
@@ -160,25 +169,30 @@ func (m *Manager) InitEnvironment(originalDir string) (string, error) {
 
 // CreateCheckpoint creates both filesystem and memory checkpoint
 func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
+	// Validate checkpoint ID
+	if checkpointID == "" || checkpointID == "current" {
+		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+	}
+
 	// Check if process exists
 	if !m.processExists(pid) {
 		return fmt.Errorf("process %d does not exist", pid)
 	}
 
 	// Create checkpoint directories
-	overlayPath := filepath.Join(m.overlayDir, checkpointID)
-	criuPath := filepath.Join(m.criuDir, checkpointID)
+	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
+	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
 
-	os.MkdirAll(overlayPath, 0755)
-	os.MkdirAll(criuPath, 0755)
+	os.MkdirAll(overlayCkptPath, 0755)
+	os.MkdirAll(criuCkptPath, 0755)
 
-	// 1. Create filesystem checkpoint (snapshot current overlay state)
-	if err := m.createFilesystemCheckpoint(checkpointID, overlayPath); err != nil {
+	// 1. Create a filesystem checkpoint
+	if err := m.createFilesystemCheckpoint(overlayCkptPath); err != nil {
 		return fmt.Errorf("filesystem checkpoint failed: %w", err)
 	}
 
-	// 2. Create memory checkpoint using CRIU
-	if err := m.createMemoryCheckpoint(pid, criuPath); err != nil {
+	// 2. Create a memory checkpoint
+	if err := m.createMemoryCheckpoint(pid, criuCkptPath); err != nil {
 		return fmt.Errorf("memory checkpoint failed: %w", err)
 	}
 
@@ -186,8 +200,8 @@ func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
 	metadata := Metadata{
 		ID:          checkpointID,
 		PID:         pid,
-		OverlayPath: overlayPath,
-		CriuPath:    criuPath,
+		OverlayPath: overlayCkptPath,
+		CriuPath:    criuCkptPath,
 		Timestamp:   time.Now().Unix(),
 		OriginalDir: m.originalDir,
 		SessionID:   m.sessionID,
@@ -260,9 +274,11 @@ func saveSessionInfo(sessionID string, manager *Manager) error {
 	os.MkdirAll(sessionsDir, 0755)
 
 	sessionInfo := SessionInfo{
-		SessionID: sessionID,
-		BaseDir:   manager.baseDir,
-		CreatedAt: time.Now().Unix(),
+		SessionID:   sessionID,
+		BaseDir:     manager.baseDir,
+		OriginalDir: manager.originalDir,
+		WorkOverlay: manager.workOverlay,
+		CreatedAt:   time.Now().Unix(),
 	}
 
 	data, err := json.MarshalIndent(sessionInfo, "", "  ")
@@ -315,7 +331,7 @@ func removeSessionInfo(sessionID string) error {
 
 func (m *Manager) mountOverlay(lowerDir, upperDir, workDir, mountPoint string) error {
 	// Unmount if already mounted
-	exec.Command("umount", mountPoint).Run() // Ignore errors
+	exec.Command("umount", mountPoint).Run()
 
 	// Mount overlay
 	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
@@ -328,21 +344,26 @@ func (m *Manager) mountOverlay(lowerDir, upperDir, workDir, mountPoint string) e
 	return nil
 }
 
-func (m *Manager) createFilesystemCheckpoint(checkpointID, overlayPath string) error {
-	// Copy current upper directory to checkpoint
+func (m *Manager) createFilesystemCheckpoint(overlayCkptPath string) error {
 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
-	checkpointUpper := filepath.Join(overlayPath, "upper")
+	currentWork := filepath.Join(m.overlayDir, "current", "work")
 
-	// TODO: Search about OverlayFS, we might need to copy both upper and work directories???
-	checkpointWork := filepath.Join(overlayPath, "work")
-
+	// Create checkpoint directories
+	checkpointUpper := filepath.Join(overlayCkptPath, "upper")
+	checkpointWork := filepath.Join(overlayCkptPath, "work")
 	os.MkdirAll(checkpointUpper, 0755)
 	os.MkdirAll(checkpointWork, 0755)
 
-	// Use rsync to copy the upper directory
+	// Copy current upper and work directories to checkpoint
+	// Use rsync to preserve permissions and attributes
 	cmd := exec.Command("rsync", "-a", currentUpper+"/", checkpointUpper+"/")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy filesystem state: %w", err)
+	}
+
+	cmd = exec.Command("rsync", "-a", currentWork+"/", checkpointWork+"/")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy work directory: %w", err)
 	}
 
 	return nil
@@ -360,7 +381,7 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	// CRIU might need root privileges
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid: 0, // This might need adjustment based on your setup
+			Uid: 0, // Use root user for CRIU operations
 			Gid: 0,
 		},
 	}
@@ -374,21 +395,39 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 }
 
 func (m *Manager) restoreFilesystemState(checkpointID string) error {
-	// Restore filesystem by replacing current upper with checkpoint upper
+	// Unmount current overlay
+	exec.Command("umount", m.workOverlay).Run()
+
+	// Restore filesystem by replacing the current layers with the checkpoint layers
 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
 	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
-
-	// TODO: Search about OverlayFS, we might need to copy both upper and work directories, and possibly re-mount the overlay
+	currentWork := filepath.Join(m.overlayDir, "current", "work")
+	checkpointWork := filepath.Join(m.overlayDir, checkpointID, "work")
 
 	// Backup current state
 	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
 	os.RemoveAll(backupUpper)
 	os.Rename(currentUpper, backupUpper)
+	backupWork := filepath.Join(m.overlayDir, "current", "work.backup")
+	os.RemoveAll(backupWork)
+	os.Rename(currentWork, backupWork)
 
 	// Copy checkpoint state to current
 	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to restore filesystem state: %w", err)
+	}
+	cmd = exec.Command("rsync", "-a", checkpointWork+"/", currentWork+"/")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to restore work directory: %w", err)
+	}
+
+	// Remount overlay with restored state
+	if err := m.mountOverlay(m.originalDir, currentUpper, currentWork, m.workOverlay); err != nil {
+		// Restore backup if mount fails
+		os.Rename(backupUpper, currentUpper)
+		os.Rename(backupWork, currentWork)
+		return fmt.Errorf("failed to remount overlay after restore: %w", err)
 	}
 
 	return nil
