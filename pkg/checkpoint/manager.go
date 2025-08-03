@@ -376,14 +376,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-D", criuPath,
 		"--shell-job",
 		"--tcp-established", // Include TCP connections
-		"--leave-running") // Keep process running after checkpoint
+		"--leave-running")   // Keep process running after checkpoint
 
-	// Attach to current TTY
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Set root privileges
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Uid: 0,
@@ -391,9 +385,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		},
 	}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("CRIU dump failed: %w, output: %s", err, string(output))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create memory checkpoint: %w", err)
 	}
 
 	return nil
@@ -446,17 +439,12 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 	}
 
 	// Use CRIU to restore the process
-	cmd := exec.Command("criu", "restore",
-		"-D", criuPath,
-		"--shell-job",
-		"--tcp-established")
+	criuCmd := fmt.Sprintf(
+		"criu restore --images-dir '%s' --shell-job --tcp-established",
+		criuPath,
+	)
 
-	// Attach to current TTY
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Set root privileges
+	cmd := exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Uid: 0,
@@ -464,9 +452,8 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		},
 	}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return -1, fmt.Errorf("CRIU restore failed: %w, output: %s", err, string(output))
+	if err := cmd.Start(); err != nil {
+		return -1, fmt.Errorf("failed to restore memory state: %w", err)
 	}
 
 	return pid, nil
@@ -474,10 +461,15 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 
 func (m *Manager) killProcess(pid int) error {
 	// Mimic my "__kill_original_process"'s soft and hard kill behavior
-	process, err := os.FindProcess(pid)
-	if err != nil {
+	if !m.processExists(pid) {
 		// Process does not exist, probably already terminated
 		return nil
+	}
+
+	// Retrieve the process
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve process %d: %w", pid, err)
 	}
 
 	if err := process.Signal(syscall.SIGTERM); err != nil {
