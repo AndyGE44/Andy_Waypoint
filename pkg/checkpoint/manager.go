@@ -186,14 +186,14 @@ func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
 	os.MkdirAll(overlayCkptPath, 0755)
 	os.MkdirAll(criuCkptPath, 0755)
 
-	// 1. Create a filesystem checkpoint
-	if err := m.createFilesystemCheckpoint(overlayCkptPath); err != nil {
-		return fmt.Errorf("filesystem checkpoint failed: %w", err)
-	}
-
-	// 2. Create a memory checkpoint
+	// 1. Create a memory checkpoint
 	if err := m.createMemoryCheckpoint(pid, criuCkptPath); err != nil {
 		return fmt.Errorf("memory checkpoint failed: %w", err)
+	}
+
+	// 2. Create a filesystem checkpoint
+	if err := m.createFilesystemCheckpoint(overlayCkptPath); err != nil {
+		return fmt.Errorf("filesystem checkpoint failed: %w", err)
 	}
 
 	// 3. Save metadata
@@ -376,12 +376,17 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-D", criuPath,
 		"--shell-job",
 		"--tcp-established", // Include TCP connections
-		"--leave-running")   // Keep process running after checkpoint
+		"--leave-running") // Keep process running after checkpoint
 
-	// CRIU might need root privileges
+	// Attach to current TTY
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Set root privileges
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid: 0, // Use root user for CRIU operations
+			Uid: 0,
 			Gid: 0,
 		},
 	}
@@ -445,6 +450,11 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		"-D", criuPath,
 		"--shell-job",
 		"--tcp-established")
+
+	// Attach to current TTY
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	// Set root privileges
 	cmd.SysProcAttr = &syscall.SysProcAttr{
