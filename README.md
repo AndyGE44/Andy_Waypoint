@@ -186,44 +186,54 @@ sudo ./checkpoint-lite cleanup abc123def456
 ```
 /tmp/
  ├── checkpoint-sessions/
- │   	├── a1b2c3d4e5f6g7h8/       # App A's session
+ │   	├── a1b2c3d4e5f6g7h8/            # App A's session
  │   	│  	├── overlays/
  │   	│  	│ 	├── current/
- │   	│  	│ 	│   ├── upper/	    # Overlay upper directory
- │   	│  	│ 	│   └── work/ 	    # Overlay work directory
- │   	│  	│   └── ckpt-1/         # Checkpoint ckpt-1
- │   	│  	│       ├── upper/          # Filesystem state
- │   	│  	│       └── work/           # Work directory
- │   	│   ├── criu/
- │   	│   │ 	└── ckpt-1/             # Checkpoint ckpt-1
- │   	│  	│       └── *.img           # CRIU image files
- │   	│   ├── metadata/               # Checkpoint metadata
- │   	│   │  └── ckpt-1.json              # "Metadata" for ckpt-1
- │   	│   └── work/           	# App A works here
- │   	└── x9y8z7w6v5u4t3s2/       # App B's session
+ │   	│  	│ 	│   ├── upper/      # Overlay upper directory
+ │   	│  	│ 	│   └── work/       # Overlay work directory
+ │   	│  	│ 	└── ckpt-1/         # Checkpoint ckpt-1
+ │   	│  	│ 	    ├── upper/          # Filesystem state
+ │   	│  	│ 	    └── work/           # Work directory
+ │   	│  	├── criu/
+ │   	│  	│ 	└── ckpt-1/         # Checkpoint ckpt-1
+ │   	│  	│       └── *.img               # CRIU image files
+ │   	│  	├── metadata/               # Checkpoint metadata
+ │   	│  	│ 	└── ckpt-1.json         # "Metadata" for ckpt-1
+ │   	│  	└── work/                   # App A works here
+ │   	└── x9y8z7w6v5u4t3s2/           # App B's session
  │       	├── overlays/
  │       	├── criu/
  │       	├── metadata/
  │       	└── work/
- └── checkpoint-sessions-info/      # Global session registry
-		 ├── a1b2c3d4e5f6g7h8.json  # "SessionInfo" for App A
-		 └── x9y8z7w6v5u4t3s2.json
+ └── checkpoint-sessions-info/          # Global session registry
+		├── a1b2c3d4e5f6g7h8.json   # "SessionInfo" for App A
+		└── x9y8z7w6v5u4t3s2.json   # "SessionInfo" for App B
 ```
 
 ## Technical Details ⌨️
 
-### Filesystem Checkpointing
+### OverlayFS Initialization
 
 - **Lower Layer**: Original workspace (read-only)
 - **Upper Layer**: Application changes (copy-on-write)
-- **Checkpoint**: Snapshot of upper layer at checkpoint time
-- **Restore**: Replace current upper layer with checkpoint snapshot
+- **Work Layer** (`~/overlays/*/work/`): Temporary storage for OverlayFS internal operations
+- **Merges** (`~/work/`): Combines upper and lower layers for the application to see
 
-### Memory Checkpointing
+### Checkpoint Snapshot
+- **OverlayFS Checkpoint**: Copies of both upper and work layers at checkpoint time
+- **CRIU Checkpoint**: Dumps process memory, file descriptors, and execution state
 
-- **CRIU Dump**: Captures process memory, file descriptors, and execution state
-- **Process Management**: Handles PID conflicts during restore
-- **State Consistency**: Coordinates filesystem and memory restoration
+Those operations are performed in parallel using goroutines to reduce the time taken for checkpoint creation.
+
+> TODO: Add support for multi-process trees in future versions.
+
+### Restoration
+- **OverlayFS Restore**: Replaces the current upper and work layers with checkpoint snapshots, and re-mounts the OverlayFS
+- **CRIU Restore**: Recreates process memory and execution state from checkpoint images
+
+For the robust performance, the restoration is done in sequential order, first restoring the OverlayFS state and then the memory state.
+
+> TODO: Think about the re-mount operation optimization.
 
 ### Session Isolation
 
