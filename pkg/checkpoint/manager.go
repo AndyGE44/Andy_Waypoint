@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -57,6 +58,69 @@ func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
 	// 2. Create a filesystem checkpoint
 	if err := m.createFilesystemCheckpoint(overlayCkptPath); err != nil {
 		return fmt.Errorf("filesystem checkpoint failed: %w", err)
+	}
+
+	// 3. Save metadata
+	metadata := Metadata{
+		ID:          checkpointID,
+		PID:         pid,
+		OverlayPath: overlayCkptPath,
+		CriuPath:    criuCkptPath,
+		Timestamp:   time.Now().Unix(),
+		OriginalDir: m.originalDir,
+		SessionID:   m.sessionID,
+	}
+
+	return m.saveMetadata(checkpointID, metadata)
+}
+
+// CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
+// This function uses goroutines to speed up the checkpoint creation process
+// This is an experimental feature and may not be fully stable
+func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
+	// Validate checkpoint ID
+	if checkpointID == "" || checkpointID == "current" {
+		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+	}
+
+	// Check if process exists
+	if !m.processExists(pid) {
+		return fmt.Errorf("process %d does not exist", pid)
+	}
+
+	// Create checkpoint directories
+	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
+	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
+
+	os.MkdirAll(overlayCkptPath, 0755)
+	os.MkdirAll(criuCkptPath, 0755)
+
+	var wg sync.WaitGroup
+	var filesystemErr, memoryErr error
+
+	wg.Add(2)
+
+	// 1. Create a memory checkpoint
+	go func() {
+		defer wg.Done()
+		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
+	}()
+
+	// 2. Create a filesystem checkpoint
+	go func() {
+		defer wg.Done()
+		filesystemErr = m.createFilesystemCheckpoint(overlayCkptPath)
+	}()
+
+	// Wait for both goroutines to finish
+	wg.Wait()
+
+	// Check for errors
+	if memoryErr != nil {
+		return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
+	}
+	if filesystemErr != nil {
+		return fmt.Errorf("filesystem checkpoint failed: %w", filesystemErr)
 	}
 
 	// 3. Save metadata
