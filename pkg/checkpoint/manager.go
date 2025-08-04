@@ -200,39 +200,39 @@ func (m *Manager) CleanupForce() error {
 	fmt.Printf("Starting forceful cleanup for session %s...\n", m.sessionID)
 
 	// Step 1: Unmount overlay filesystems
-	fmt.Printf("Unmounting overlay filesystems...")
+	fmt.Println("Unmounting overlay filesystems...")
 	if err := m.forceUnmountOverlays(); err != nil {
-		fmt.Printf("... Failed to unmount overlays: %v\n", err)
+		fmt.Printf("Warning: Failed to unmount overlays: %v\n", err)
 	}
 
 	// Step 2: Kill processes using files in this directory
-	fmt.Printf("Killing processes using session directory...")
+	fmt.Println("Killing processes using session directory...")
 	if err := m.killProcessesUsingDirectory(); err != nil {
-		fmt.Printf("... Failed to kill some processes: %v\n", err)
+		fmt.Printf("Warning: Failed to kill some processes: %v\n", err)
 	}
 
 	// Step 3: Close file handles
-	fmt.Printf("Closing file handles...")
+	fmt.Println("Closing file handles...")
 	if err := m.closeFileHandles(); err != nil {
-		fmt.Printf("... Failed to close some file handles: %v\n", err)
+		fmt.Printf("Warning: Failed to close some file handles: %v\n", err)
 	}
 
 	// Step 4: Force unmount any remaining mounts
-	fmt.Printf("Force unmounting all mounts in session directory...")
+	fmt.Println("Force unmounting all mounts in session directory...")
 	if err := m.forceUnmountAll(); err != nil {
-		fmt.Printf("... Failed to force unmount: %v\n", err)
+		fmt.Printf("Warning: Failed to force unmount: %v\n", err)
 	}
 
 	// Step 5: Try removing the directory multiple times with a backoff
-	fmt.Printf("Removing session directory...")
+	fmt.Println("Removing session directory...")
 	if err := m.removeDirectoryWithRetry(); err != nil {
 		return fmt.Errorf("failed to remove session directory after multiple attempts: %w", err)
 	}
 
 	// Step 6: Remove global session info
-	fmt.Printf("Removing session info...")
+	fmt.Println("Removing session info...")
 	if err := removeSessionInfo(m.sessionID); err != nil {
-		fmt.Printf("... Failed to remove session info: %v\n", err)
+		fmt.Printf("Warning: Failed to remove session info: %v\n", err)
 	}
 
 	fmt.Printf("Session %s cleaned up successfully\n", m.sessionID)
@@ -265,7 +265,7 @@ func (m *Manager) CleanupInteractive() error {
 	// Show mount points
 	mounts, _ := m.findMountsInDirectory()
 	if len(mounts) > 0 {
-		fmt.Printf("Active mount points:\n")
+		fmt.Printf("\nActive mount points:\n")
 		for _, mount := range mounts {
 			fmt.Printf("  %s\n", mount)
 		}
@@ -276,6 +276,7 @@ func (m *Manager) CleanupInteractive() error {
 	fmt.Println("2. Deactivate Python virtual environments")
 	fmt.Println("3. Stop any processes listed above")
 	fmt.Printf("4. Then run: sudo ./checkpoint-lite cleanup %s\n", m.sessionID)
+	fmt.Printf("5. If that fails, try: sudo ./checkpoint-lite cleanup %s --force\n", m.sessionID)
 
 	return fmt.Errorf("manual intervention required")
 }
