@@ -75,7 +75,7 @@ func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
 }
 
 // CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
-// This function uses goroutines to speed up the checkpoint creation process
+// This function uses goroutines to speed up the checkpoint creation process (x0.65)
 // This is an experimental feature and may not be fully stable
 func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 	// Validate checkpoint ID

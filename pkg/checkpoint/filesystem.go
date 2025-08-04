@@ -126,11 +126,13 @@ func (m *Manager) restoreFilesystemState(checkpointID string) error {
 
 // restoreFilesystemStateQuick restores the filesystem state quickly by replacing the current layers with the checkpoint layers
 // This is an experimental method and might be unsafe if the current state is not clean
+// ... seems buggy, maybe not needed
 func (m *Manager) restoreFilesystemStateQuick(checkpointID string) error {
 	// Restore filesystem by replacing the current layers with the checkpoint layers
 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
 	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
 	currentWork := filepath.Join(m.overlayDir, "current", "work")
+	checkpointWork := filepath.Join(m.overlayDir, checkpointID, "work")
 
 	// Backup current state
 	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
@@ -144,6 +146,10 @@ func (m *Manager) restoreFilesystemStateQuick(checkpointID string) error {
 	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to restore filesystem state: %w", err)
+	}
+	cmd = exec.Command("rsync", "-a", checkpointWork+"/", currentWork+"/")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to restore work directory: %w", err)
 	}
 
 	return nil
