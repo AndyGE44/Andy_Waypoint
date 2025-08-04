@@ -120,8 +120,8 @@ func main() {
 		}
 
 	case "cleanup":
-		if len(os.Args) != 3 {
-			fmt.Println("Usage: cleanup <session>")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: cleanup <session> [--interactive | --force]")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]
@@ -132,9 +132,26 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := manager.Cleanup(); err != nil {
-			fmt.Printf("Error cleaning up session: %v\n", err)
-			os.Exit(1)
+		interactive := len(os.Args) > 3 && os.Args[3] == "--interactive"
+		force := len(os.Args) > 3 && os.Args[3] == "--force"
+
+		if interactive {
+			if err := manager.CleanupInteractive(); err != nil {
+				fmt.Printf("Error cleaning up session interactively: %v\n", err)
+				os.Exit(1)
+			}
+		} else if force {
+			if err := manager.CleanupForce(); err != nil {
+				fmt.Printf("Error cleaning up session forcefully: %v\n", err)
+				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --interactive\n", sessionID)
+				os.Exit(1)
+			}
+		} else {
+			if err = manager.Cleanup(); err != nil {
+				fmt.Printf("Error cleaning up session: %v\n", err)
+				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --force\n", sessionID)
+				os.Exit(1)
+			}
 		}
 		fmt.Printf("Session '%s' cleaned up successfully\n", sessionID)
 

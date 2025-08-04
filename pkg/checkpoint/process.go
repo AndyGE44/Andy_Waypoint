@@ -5,6 +5,9 @@ package checkpoint
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -50,4 +53,87 @@ func (m *Manager) killProcess(pid int) error {
 
 	// If still running, force kill
 	return process.Signal(syscall.SIGKILL)
+}
+
+// killProcessesUsingDirectory kills processes that have files open in our directory
+func (m *Manager) killProcessesUsingDirectory() error {
+	pids, err := m.findProcessesUsingDirectory()
+	if err != nil {
+		return err
+	}
+
+	if len(pids) == 0 {
+		return nil
+	}
+
+	fmt.Printf("Found %d processes using directory, attempting to terminate...\n", len(pids))
+
+	// Try SIGTERM first
+	for _, pid := range pids {
+		if err := m.killProcess(pid); err != nil {
+			fmt.Printf("Warning: Failed to kill process %d: %v\n", pid, err)
+		}
+	}
+
+	// Wait a moment for processes to terminate
+	time.Sleep(2 * time.Second)
+
+	// Check if any processes are still alive and force kill them
+	remainingPids, _ := m.findProcessesUsingDirectory()
+	for _, pid := range remainingPids {
+		process, err := os.FindProcess(pid)
+		if err == nil {
+			process.Signal(syscall.SIGKILL)
+		}
+	}
+
+	return nil
+}
+
+// findProcessesUsingDirectory uses lsof to find processes with open files in directory
+func (m *Manager) findProcessesUsingDirectory() ([]int, error) {
+	// Use lsof to find processes with open files in our directory
+	cmd := exec.Command("lsof", "+D", m.baseDir)
+	output, err := cmd.Output()
+	if err != nil {
+		// lsof returns non-zero exit code if no files found, which is not an error
+		return []int{}, nil
+	}
+
+	var pids []int
+	lines := strings.Split(string(output), "\n")
+
+	// Skip header line, parse PIDs from lsof output
+	for _, line := range lines[1:] {
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			if pid, err := strconv.Atoi(fields[1]); err == nil {
+				// Avoid duplicates
+				found := false
+				for _, existingPid := range pids {
+					if existingPid == pid {
+						found = true
+						break
+					}
+				}
+				if !found {
+					pids = append(pids, pid)
+				}
+			}
+		}
+	}
+
+	return pids, nil
+}
+
+// closeFileHandles attempts to close file handles using fuser
+func (m *Manager) closeFileHandles() error {
+	cmd := exec.Command("fuser", "-k", m.baseDir)
+	cmd.Run()
+
+	return nil
 }

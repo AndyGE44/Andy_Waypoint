@@ -3,10 +3,13 @@ package checkpoint
 // All filesystem-related operations
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 // InitEnvironment sets up OverlayFS for the given directory
@@ -80,6 +83,117 @@ func (m *Manager) createFilesystemCheckpoint(overlayCkptPath string) error {
 	cmd = exec.Command("rsync", "-a", currentWork+"/", checkpointWork+"/")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy work directory: %w", err)
+	}
+
+	return nil
+}
+
+// forceUnmountOverlays unmounts all overlay filesystems in the session
+func (m *Manager) forceUnmountOverlays() error {
+	// Unmount the main work overlay
+	if m.workOverlay != "" {
+		if err := m.forceUnmount(m.workOverlay); err != nil {
+			return fmt.Errorf("failed to unmount work overlay: %w", err)
+		}
+	}
+
+	// Find and unmount any other overlay mounts in our directory
+	mounts, err := m.findMountsInDirectory()
+	if err != nil {
+		return err
+	}
+
+	for _, mount := range mounts {
+		if err := m.forceUnmount(mount); err != nil {
+			fmt.Printf("Warning: Failed to unmount %s: %v\n", mount, err)
+		}
+	}
+
+	return nil
+}
+
+// forceUnmount attempts to unmount with increasing force
+func (m *Manager) forceUnmount(mountPoint string) error {
+	// Try normal unmount first
+	cmd := exec.Command("umount", mountPoint)
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+
+	// Try lazy unmount
+	cmd = exec.Command("umount", "-l", mountPoint)
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+
+	// Try force unmount
+	cmd = exec.Command("umount", "-f", mountPoint)
+	return cmd.Run()
+}
+
+// findMountsInDirectory finds all mount points within our session directory
+func (m *Manager) findMountsInDirectory() ([]string, error) {
+	var mounts []string
+
+	file, err := os.Open("/proc/mounts")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 {
+			mountPoint := fields[1]
+			if strings.HasPrefix(mountPoint, m.baseDir) {
+				mounts = append(mounts, mountPoint)
+			}
+		}
+	}
+
+	return mounts, scanner.Err()
+}
+
+// forceUnmountAll uses umount to unmount everything in our directory tree
+func (m *Manager) forceUnmountAll() error {
+	// Find all mount points and force unmount them
+	cmd := exec.Command("findmnt", "-n", "-o", "TARGET", "-M", m.baseDir)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil // No mounts found
+	}
+
+	mounts := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, mount := range mounts {
+		if mount != "" {
+			exec.Command("umount", "-f", "-l", mount).Run()
+		}
+	}
+
+	return nil
+}
+
+// removeDirectoryWithRetry attempts to remove the base directory with exponential backoff
+func (m *Manager) removeDirectoryWithRetry() error {
+	maxAttempts := 5
+	baseDelay := 500 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := os.RemoveAll(m.baseDir)
+		if err == nil {
+			return nil
+		}
+
+		if attempt == maxAttempts {
+			return fmt.Errorf("final attempt failed: %w", err)
+		}
+
+		fmt.Printf("Attempt %d failed (%v), retrying in %v...\n",
+			attempt, err, baseDelay)
+
+		time.Sleep(baseDelay)
+		baseDelay *= 2 // Exponential backoff
 	}
 
 	return nil

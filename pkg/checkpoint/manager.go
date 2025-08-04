@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -192,4 +193,89 @@ func (m *Manager) Cleanup() error {
 
 	// Remove global session info
 	return removeSessionInfo(m.sessionID)
+}
+
+// CleanupForce removes all files and unmounts overlay for this session
+func (m *Manager) CleanupForce() error {
+	fmt.Printf("Starting forceful cleanup for session %s...\n", m.sessionID)
+
+	// Step 1: Unmount overlay filesystems
+	fmt.Printf("Unmounting overlay filesystems...")
+	if err := m.forceUnmountOverlays(); err != nil {
+		fmt.Printf("... Failed to unmount overlays: %v\n", err)
+	}
+
+	// Step 2: Kill processes using files in this directory
+	fmt.Printf("Killing processes using session directory...")
+	if err := m.killProcessesUsingDirectory(); err != nil {
+		fmt.Printf("... Failed to kill some processes: %v\n", err)
+	}
+
+	// Step 3: Close file handles
+	fmt.Printf("Closing file handles...")
+	if err := m.closeFileHandles(); err != nil {
+		fmt.Printf("... Failed to close some file handles: %v\n", err)
+	}
+
+	// Step 4: Force unmount any remaining mounts
+	fmt.Printf("Force unmounting all mounts in session directory...")
+	if err := m.forceUnmountAll(); err != nil {
+		fmt.Printf("... Failed to force unmount: %v\n", err)
+	}
+
+	// Step 5: Try removing the directory multiple times with a backoff
+	fmt.Printf("Removing session directory...")
+	if err := m.removeDirectoryWithRetry(); err != nil {
+		return fmt.Errorf("failed to remove session directory after multiple attempts: %w", err)
+	}
+
+	// Step 6: Remove global session info
+	fmt.Printf("Removing session info...")
+	if err := removeSessionInfo(m.sessionID); err != nil {
+		fmt.Printf("... Failed to remove session info: %v\n", err)
+	}
+
+	fmt.Printf("Session %s cleaned up successfully\n", m.sessionID)
+	return nil
+}
+
+// CleanupInteractive cleanup with user interaction
+func (m *Manager) CleanupInteractive() error {
+	// Try automatic cleanup first
+	err := m.Cleanup()
+	if err == nil {
+		return nil
+	}
+
+	fmt.Printf("Automatic cleanup failed: %v\n", err)
+	fmt.Println("This usually happens when processes are still using files in the session directory.")
+	fmt.Println("\nTroubleshooting steps:")
+
+	// Show processes using the directory
+	pids, _ := m.findProcessesUsingDirectory()
+	if len(pids) > 0 {
+		fmt.Printf("Processes using session directory:\n")
+		for _, pid := range pids {
+			cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid,ppid,cmd")
+			output, _ := cmd.Output()
+			fmt.Print(string(output))
+		}
+	}
+
+	// Show mount points
+	mounts, _ := m.findMountsInDirectory()
+	if len(mounts) > 0 {
+		fmt.Printf("Active mount points:\n")
+		for _, mount := range mounts {
+			fmt.Printf("  %s\n", mount)
+		}
+	}
+
+	fmt.Println("\nRecommended actions:")
+	fmt.Println("1. Close any terminals/editors in the session directory")
+	fmt.Println("2. Deactivate Python virtual environments")
+	fmt.Println("3. Stop any processes listed above")
+	fmt.Printf("4. Then run: sudo ./checkpoint-lite cleanup %s\n", m.sessionID)
+
+	return fmt.Errorf("manual intervention required")
 }
