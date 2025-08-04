@@ -1,5 +1,7 @@
 package checkpoint
 
+// All structs, constants, and interfaces
+
 // /tmp/
 //  ├── checkpoint-sessions/
 //  │   	├── a1b2c3d4e5f6g7h8/      	# App A's session
