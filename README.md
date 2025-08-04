@@ -117,6 +117,8 @@ cd /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
 ```bash
 sudo ./checkpoint-lite create a1b2c3d4e5f6g7h8 1234 checkpoint-name
 ```
+With the help of goroutines, this command runs the CRIU dump and OverlayFS snapshot in parallel,
+reducing 40% of the time compared to sequential execution in our tests.
 
 ### 4. Restore from Checkpoint
 
@@ -135,6 +137,10 @@ sudo ./checkpoint-lite list a1b2c3d4e5f6g7h8
 ```bash
 sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
 ```
+If this basic version of the cleanup command fails, our **checkpoint-lite** will automatically instruct you on 
+further actions. Namely, you can use:
+- `--interactive` to get more information about the failure, or 
+- `--force` to forcefully remove and umount all the related resources.
 
 ## Example Workflow 🧩
 
