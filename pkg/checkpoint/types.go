@@ -2,31 +2,6 @@ package checkpoint
 
 // All structs, constants, and interfaces
 
-// /tmp/
-//  ├── checkpoint-sessions/
-//  │   	├── a1b2c3d4e5f6g7h8/      	# App A's session
-//  │   	│  	├── overlays/
-//  │   	│  	│ 	├── current/
-//  │   	│  	│ 	│   ├── upper/			# Overlay upper directory
-//  │   	│  	│ 	│   └── work/ 			# Overlay work directory
-//  │   	│  	│   └── ckpt-1/        	# Checkpoint ckpt-1
-//  │   	│  	│       ├── upper/        	# Filesystem state
-//  │   	│  	│       └── work/         	# Work directory
-//  │   	│   ├── criu/
-//  │   	│   │ 	└── ckpt-1/        	# Checkpoint ckpt-1
-//  │   	│  	│       └── *.img        	# CRIU image files
-//  │   	│   ├── metadata/			# Checkpoint metadata
-//  │   	│   │  └── ckpt-1.json			# "Metadata" for ckpt-1
-//  │   	│   └── work/           	# App A works here
-//  │   	└── x9y8z7w6v5u4t3s2/         	# App B's session
-//  │       	├── overlays/
-//  │       	├── criu/
-//  │       	├── metadata/
-//  │       	└── work/                  	# App B works here
-//  └── checkpoint-sessions-info/      	# Global session registry
-// 		 ├── a1b2c3d4e5f6g7h8.json			# "SessionInfo" for App A
-// 		 └── x9y8z7w6v5u4t3s2.json
-
 type Manager struct {
 	baseDir     string // Base directory for this session, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8
 	overlayDir  string // Directory for overlay layers, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/overlays

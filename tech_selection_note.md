@@ -96,6 +96,6 @@ The Go-based tool will integrate with our existing Python EnvManager framework t
 Go provides the optimal balance of performance, development efficiency, and system programming capabilities for our lightweight checkpoint/restore tool. The language's design philosophy aligns well with our technical requirements, and the resulting tool will provide accurate benchmarking data while maintaining long-term maintainability.
 
 ---
-*Decision made: August 1, 2025*
-*Architect: Alex Jiakai Xu*
-*Review date: After initial prototype completion*
+*Architect: Alex Jiakai Xu*  
+*Decision made: August 1, 2025*  
+*Review date: August 3, 2025*  
