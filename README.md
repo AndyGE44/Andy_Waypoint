@@ -196,7 +196,7 @@ sudo ./checkpoint-lite cleanup abc123def456
  │   	│  	│ 	    └── work/           # Work directory
  │   	│  	├── criu/
  │   	│  	│ 	└── ckpt-1/         # Checkpoint ckpt-1
- │   	│  	│       └── *.img               # CRIU image files
+ │   	│  	│ 	    └── *.img           # CRIU image files
  │   	│  	├── metadata/               # Checkpoint metadata
  │   	│  	│ 	└── ckpt-1.json         # "Metadata" for ckpt-1
  │   	│  	└── work/                   # App A works here
