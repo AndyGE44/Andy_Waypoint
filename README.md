@@ -64,6 +64,24 @@ See [our architecture decision record](./tech_selection_note.md) for more detail
 - OverlayFS support (most modern Linux distributions)
 - Go 1.23 (for building from source)
 
+### Install Go (just for reference)
+```bash
+# Install Go (version 1.23.1)
+wget https://go.dev/dl/go1.23.1.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.1.linux-amd64.tar.gz
+
+# Add to ~/.bashrc or ~/.profile
+export PATH=$PATH:/usr/local/go/bin
+export GOPATH=$HOME/go
+export GOBIN=$GOPATH/bin
+
+# Reload shell
+source ~/.bashrc
+
+# Verify installation
+go version
+```
+
 ### Install CRIU
 
 ```bash
