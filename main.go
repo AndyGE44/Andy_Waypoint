@@ -13,10 +13,10 @@ func main() {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory>                        - Initialize environment")
-		fmt.Println("  create <session> <pid> <checkpoint-id>       - Create checkpoint")
+		fmt.Println("  create <session> <pid> <checkpoint-id>       - Create checkpoint, PID -1 to skip memory checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  list <session>                               - List checkpoints")
-		fmt.Println("  cleanup <session>                            - Clean up session")
+		fmt.Println("  cleanup <session> [--interactive | --force]  - Clean up session")
 		os.Exit(1)
 	}
 
@@ -48,7 +48,7 @@ func main() {
 
 	case "create":
 		if len(os.Args) != 5 {
-			fmt.Println("Usage: create <session> <pid> <checkpoint-id>")
+			fmt.Println("Usage: create <session> <pid | -1> <checkpoint-id>")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]

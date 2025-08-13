@@ -34,3 +34,5 @@ const (
 	DefaultSessionsDir = "/tmp/checkpoint-sessions"
 	SessionInfoDir     = "/tmp/checkpoint-sessions-info"
 )
+
+const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint

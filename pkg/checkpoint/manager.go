@@ -32,52 +32,11 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
-// CreateCheckpoint creates both filesystem and memory checkpoint
-func (m *Manager) CreateCheckpoint(pid int, checkpointID string) error {
-	// Validate checkpoint ID
-	if checkpointID == "" || checkpointID == "current" {
-		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
-	}
-
-	// Check if process exists
-	if !m.processExists(pid) {
-		return fmt.Errorf("process %d does not exist", pid)
-	}
-
-	// Create checkpoint directories
-	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
-	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
-
-	os.MkdirAll(overlayCkptPath, 0755)
-	os.MkdirAll(criuCkptPath, 0755)
-
-	// 1. Create a memory checkpoint
-	if err := m.createMemoryCheckpoint(pid, criuCkptPath); err != nil {
-		return fmt.Errorf("memory checkpoint failed: %w", err)
-	}
-
-	// 2. Create a filesystem checkpoint
-	if err := m.createFilesystemCheckpoint(overlayCkptPath); err != nil {
-		return fmt.Errorf("filesystem checkpoint failed: %w", err)
-	}
-
-	// 3. Save metadata
-	metadata := Metadata{
-		ID:          checkpointID,
-		PID:         pid,
-		OverlayPath: overlayCkptPath,
-		CriuPath:    criuCkptPath,
-		Timestamp:   time.Now().Unix(),
-		OriginalDir: m.originalDir,
-		SessionID:   m.sessionID,
-	}
-
-	return m.saveMetadata(checkpointID, metadata)
-}
+// CreateCheckpoint creates both the filesystem and the memory checkpoint
+// Deprecated: Since version 0.2.0, use CreateCheckpointParallel instead
 
 // CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
 // This function uses goroutines to speed up the checkpoint creation process (x0.65)
-// This is an experimental feature and may not be fully stable
 func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 	// Validate checkpoint ID
 	if checkpointID == "" || checkpointID == "current" {
@@ -85,7 +44,9 @@ func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 	}
 
 	// Check if process exists
-	if !m.processExists(pid) {
+	if pid == SkipMemoryCheckpoint {
+		fmt.Println("Skipping memory checkpoint as per user request")
+	} else if !m.processExists(pid) {
 		return fmt.Errorf("process %d does not exist", pid)
 	}
 
@@ -104,6 +65,10 @@ func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 	// 1. Create a memory checkpoint
 	go func() {
 		defer wg.Done()
+		if pid == SkipMemoryCheckpoint {
+			memoryErr = nil
+			return
+		}
 		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
 	}()
 
@@ -138,7 +103,7 @@ func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 	return m.saveMetadata(checkpointID, metadata)
 }
 
-// RestoreCheckpoint restores both filesystem and memory state
+// RestoreCheckpoint restores both the filesystem and memory state
 func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
 	// Load metadata
 	metadata, err := m.loadMetadata(checkpointID)
@@ -152,6 +117,10 @@ func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
 	}
 
 	// 2. Restore memory state using CRIU
+	if metadata.PID == SkipMemoryCheckpoint {
+		fmt.Println("Skipping memory restore as per user request")
+		return SkipMemoryCheckpoint, nil
+	}
 	newPID, err := m.restoreMemoryState(metadata.PID, metadata.CriuPath)
 	if err != nil {
 		return 0, fmt.Errorf("memory restore failed: %w", err)
@@ -160,7 +129,7 @@ func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
 	return newPID, nil
 }
 
-// ListCheckpoints returns list of available checkpoints
+// ListCheckpoints returns a list of available checkpoints
 func (m *Manager) ListCheckpoints() ([]string, error) {
 	files, err := os.ReadDir(m.metadataDir)
 	if err != nil {
@@ -178,7 +147,7 @@ func (m *Manager) ListCheckpoints() ([]string, error) {
 	return checkpoints, nil
 }
 
-// Cleanup removes all files and unmounts overlay for this session
+// Cleanup removes all files and unmounts the overlay for this session
 func (m *Manager) Cleanup() error {
 	// Unmount overlay
 	if m.workOverlay != "" {
@@ -195,7 +164,7 @@ func (m *Manager) Cleanup() error {
 	return removeSessionInfo(m.sessionID)
 }
 
-// CleanupForce removes all files and unmounts overlay for this session
+// CleanupForce removes all files and unmounts the overlay for this session
 func (m *Manager) CleanupForce() error {
 	fmt.Printf("Starting forceful cleanup for session %s...\n", m.sessionID)
 
@@ -235,7 +204,6 @@ func (m *Manager) CleanupForce() error {
 		fmt.Printf("Warning: Failed to remove session info: %v\n", err)
 	}
 
-	fmt.Printf("Session %s cleaned up successfully\n", m.sessionID)
 	return nil
 }
 
