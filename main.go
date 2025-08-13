@@ -13,7 +13,7 @@ func main() {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory>                        - Initialize environment")
-		fmt.Println("  create <session> <pid> <checkpoint-id>       - Create checkpoint, PID -1 to skip memory checkpoint")
+		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  list <session>                               - List checkpoints")
 		fmt.Println("  cleanup <session> [--force]                  - Clean up session")
