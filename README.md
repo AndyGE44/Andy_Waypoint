@@ -139,7 +139,7 @@ With the help of goroutines, this command runs the CRIU dump and OverlayFS snaps
 reducing 40% of the time compared to sequential execution in our tests.
 
 Special options:
-- Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`.
+- Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`. However, this should only be used if you are sure that the application does not relate to the managed directory, or you are not running any application at all and simply want to capture the filesystem state.
 
 ### 4. Restore from Checkpoint
 
