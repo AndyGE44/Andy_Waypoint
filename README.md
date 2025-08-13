@@ -138,6 +138,9 @@ sudo ./checkpoint-lite create a1b2c3d4e5f6g7h8 1234 checkpoint-name
 With the help of goroutines, this command runs the CRIU dump and OverlayFS snapshot in parallel,
 reducing 40% of the time compared to sequential execution in our tests.
 
+Special options:
+- Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`.
+
 ### 4. Restore from Checkpoint
 
 ```bash
@@ -157,8 +160,8 @@ sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
 ```
 If this basic version of the cleanup command fails, our **checkpoint-lite** will automatically instruct you on 
 further actions. Namely, you can use:
-- `--interactive` to get more information about the failure, or 
-- `--force` to forcefully remove and umount all the related resources.
+- ~~`--interactive` to get more information~~ (Since v0.2.0, this is the default behavior)
+- `--force` to forcefully remove and unmount all the related resources.
 
 ## Example Workflow 🧩
 
@@ -243,8 +246,6 @@ sudo ./checkpoint-lite cleanup abc123def456
 
 Those operations are performed in parallel using goroutines to reduce the time taken for checkpoint creation.
 
-> TODO: Add support for multi-process trees in future versions.
-
 ### Restoration
 - **OverlayFS Restore**: Replaces the current upper and work layers with checkpoint snapshots, and re-mounts the OverlayFS
 - **CRIU Restore**: Recreates process memory and execution state from checkpoint images
@@ -265,5 +266,4 @@ Each session gets:
 
 - Requires root privileges (CRIU and OverlayFS requirement)
 - Linux-specific (depends on CRIU and OverlayFS)
-- Single-process focus (no multi-process trees yet)
 - Network connections may not survive checkpoint/restore

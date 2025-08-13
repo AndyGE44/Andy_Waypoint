@@ -217,34 +217,39 @@ func (m *Manager) CleanupInteractive() error {
 
 	fmt.Printf("Automatic cleanup failed: %v\n", err)
 	fmt.Println("This usually happens when processes are still using files in the session directory.")
-	fmt.Println("\nTroubleshooting steps:")
+	fmt.Println("\nTroubleshooting hints:")
 
 	// Show processes using the directory
+	fmt.Printf("Processes using session directory:\n")
 	pids, _ := m.findProcessesUsingDirectory()
 	if len(pids) > 0 {
-		fmt.Printf("Processes using session directory:\n")
 		for _, pid := range pids {
 			cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid,ppid,cmd")
 			output, _ := cmd.Output()
 			fmt.Print(string(output))
 		}
+	} else {
+		fmt.Print("  No processes found")
 	}
+	fmt.Println()
 
 	// Show mount points
+	fmt.Printf("Active mount points:\n")
 	mounts, _ := m.findMountsInDirectory()
 	if len(mounts) > 0 {
-		fmt.Printf("\nActive mount points:\n")
 		for _, mount := range mounts {
 			fmt.Printf("  %s\n", mount)
 		}
+	} else {
+		fmt.Print("  No mounts found")
 	}
+	fmt.Println()
 
 	fmt.Println("\nRecommended actions:")
 	fmt.Println("1. Close any terminals/editors in the session directory")
-	fmt.Println("2. Deactivate Python virtual environments")
+	fmt.Println("2. Deactivate Python virtual environments, Docker containers, etc.")
 	fmt.Println("3. Stop any processes listed above")
-	fmt.Printf("4. Then run: sudo ./checkpoint-lite cleanup %s\n", m.sessionID)
-	fmt.Printf("5. If that fails, try: sudo ./checkpoint-lite cleanup %s --force\n", m.sessionID)
+	fmt.Println("4. Unmount any mounts listed above (e.g., using 'sudo umount <mountpoint>')")
 
 	return fmt.Errorf("manual intervention required")
 }

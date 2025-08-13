@@ -16,7 +16,7 @@ func main() {
 		fmt.Println("  create <session> <pid> <checkpoint-id>       - Create checkpoint, PID -1 to skip memory checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  list <session>                               - List checkpoints")
-		fmt.Println("  cleanup <session> [--interactive | --force]  - Clean up session")
+		fmt.Println("  cleanup <session> [--force]                  - Clean up session")
 		os.Exit(1)
 	}
 
@@ -121,7 +121,7 @@ func main() {
 
 	case "cleanup":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: cleanup <session> [--interactive | --force]")
+			fmt.Println("Usage: cleanup <session> [--force]")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]
@@ -133,23 +133,16 @@ func main() {
 		}
 
 		force := len(os.Args) > 3 && os.Args[3] == "--force"
-		interactive := len(os.Args) > 3 && os.Args[3] == "--interactive"
 
 		if force {
 			if err := manager.CleanupForce(); err != nil {
 				fmt.Printf("Error cleaning up session forcefully: %v\n", err)
 				os.Exit(1)
 			}
-		} else if interactive {
-			if err := manager.CleanupInteractive(); err != nil {
-				fmt.Printf("Error cleaning up session interactively: %v\n", err)
-				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --force\n", sessionID)
-				os.Exit(1)
-			}
 		} else {
-			if err = manager.Cleanup(); err != nil {
+			if err := manager.CleanupInteractive(); err != nil {
 				fmt.Printf("Error cleaning up session: %v\n", err)
-				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --interactive\n", sessionID)
+				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --force\n", sessionID)
 				os.Exit(1)
 			}
 		}
