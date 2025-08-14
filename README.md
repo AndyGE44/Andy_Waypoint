@@ -101,6 +101,13 @@ cd checkpoint-lite
 go build -o checkpoint-lite
 ```
 
+### Check Checkpoint-Lite Version (since v0.2.1)
+
+```bash
+./checkpoint-lite version
+# Output: checkpoint-lite version v0.2.1
+```
+
 ## Usage 🗂
 
 ### 1. Initialize Environment
@@ -121,6 +128,9 @@ Save the session ID for future operations!
 ```
 
 **Important**: Save the session ID and work in the provided directory.
+
+Special options:
+- `--quiet` to output only the session ID and work directory, separated by a comma. (Since v0.2.1)
 
 ### 2. Run Your Application
 
