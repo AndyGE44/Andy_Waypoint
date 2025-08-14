@@ -8,25 +8,32 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
+var Version = "v0.2.0"
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
-		fmt.Println("  init <work-directory>                        - Initialize environment")
+		fmt.Println("  init <work-directory> [--quiet]              - Initialize environment")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  list <session>                               - List checkpoints")
 		fmt.Println("  cleanup <session> [--force]                  - Clean up session")
+		fmt.Println("  version                                      - Show version")
+		fmt.Println()
+		fmt.Printf("Version: %s, Author: Alex Jiakai Xu\n", Version)
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
 	case "init":
-		if len(os.Args) != 3 {
-			fmt.Println("Usage: init <work-directory>")
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: init <work-directory> [--quiet]")
 			os.Exit(1)
 		}
 		workDir := os.Args[2]
+
+		quiet := len(os.Args) > 3 && os.Args[3] == "--quiet"
 
 		// Create a new manager with a random session
 		manager, sessionID, err := checkpoint.NewManagerWithSession()
@@ -41,10 +48,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		fmt.Printf("Environment initialized!\n")
-		fmt.Printf("Session ID: %s\n", sessionID)
-		fmt.Printf("Work in this directory: %s\n", overlayPath)
-		fmt.Printf("\nSave the session ID for future operations!\n")
+		if quiet {
+			fmt.Printf("%s,%s\n", sessionID, overlayPath)
+		} else {
+			fmt.Printf("Environment initialized!\n")
+			fmt.Printf("Session ID: %s\n", sessionID)
+			fmt.Printf("Work in this directory: %s\n", overlayPath)
+			fmt.Printf("\nSave the session ID for future operations!\n")
+		}
 
 	case "create":
 		if len(os.Args) != 5 {
@@ -147,6 +158,9 @@ func main() {
 			}
 		}
 		fmt.Printf("Session '%s' cleaned up successfully\n", sessionID)
+
+	case "version":
+		fmt.Printf("checkpoint-lite version %s\n", Version)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])
