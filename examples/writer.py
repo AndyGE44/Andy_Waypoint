@@ -15,6 +15,7 @@ def report_out_files():
     with open("/tmp/report.log", "a") as log:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         files = [f for f in os.listdir(".") if f.endswith(".out")]
+        files.sort()
         log.write(f"{ts} {' '.join(files)}\n")
         flush_and_sync(log)
 
@@ -63,6 +64,8 @@ def multi_threaded():
     """
     worker = threading.Thread(target=write_counter_worker, daemon=True)
     worker.start()
+    print(f"Reporting thread: {threading.current_thread().native_id}")
+    print(f"Writing thread: {worker.native_id}")
     while worker.is_alive():
         report_out_files()
         time.sleep(5)
