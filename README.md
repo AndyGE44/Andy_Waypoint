@@ -110,6 +110,8 @@ go build -o checkpoint-lite
 
 ## Usage 🗂
 
+![checkpoint-lite workflow](./docs/checkpoint-lite.drawio.png)
+
 ### 1. Initialize Environment
 
 Create a managed environment for your application:
