@@ -38,23 +38,20 @@ type SessionInfo struct {
 	CreatedAt   int64  `json:"created_at"`
 }
 
-var (
-	DefaultSessionsDir = "/tmp/checkpoint-sessions"
-	SessionInfoDir     = "/tmp/checkpoint-sessions-info"
-)
+const SessionInfoDir = "/tmp/checkpoint-sessions-info"
 
-type dirConfig struct {
-	SessionsDir    string `json:"sessions_dir"`
-	SessionInfoDir string `json:"session_info_dir"`
+var DefaultSessionsDir = "/tmp/checkpoint-sessions"
+
+type config struct {
+	SessionsDir string `json:"sessions_dir"`
 }
 
-// init loads configuration: Go automatically calls init functions per package before main.
-func init() {
+// loadConfig loads custom configuration.
+func loadConfig() {
 	// Determine config by precedence:
-	// 1) Direct environment variable overrides for individual dirs take the highest precedence.
-	//    CHECKPOINT_SESSIONS_DIR, CHECKPOINT_SESSION_INFO_DIR
+	// 1) Direct environment variable of `CHECKPOINT_SESSIONS_DIR` take the highest precedence.
 	// 2) Determine config file path by precedence:
-	//    a) explicit CHECKPOINT_CONFIG env var
+	//    a) explicit `CHECKPOINT_CONFIG` environment variable
 	//    b) binary-side config: ./config.json (same dir as executable)
 	//    c) user config: $XDG_CONFIG_HOME/checkpoint-lite/config.json or ~/.checkpoint-lite/config.json
 	//    d) system config: /etc/checkpoint-lite/config.json
@@ -64,17 +61,14 @@ func init() {
 	if v := os.Getenv("CHECKPOINT_SESSIONS_DIR"); v != "" {
 		DefaultSessionsDir = v
 	}
-	if v := os.Getenv("CHECKPOINT_SESSION_INFO_DIR"); v != "" {
-		SessionInfoDir = v
-	}
 
 	// 2) Config file path determination
 
-	fileExists := func(p string) bool {
-		if p == "" {
+	fileExists := func(path string) bool {
+		if path == "" {
 			return false
 		}
-		if _, err := os.Stat(p); err == nil {
+		if _, err := os.Stat(path); err == nil {
 			return true
 		}
 		return false
@@ -119,13 +113,10 @@ func init() {
 
 	if cfgPath != "" {
 		if data, err := os.ReadFile(cfgPath); err == nil {
-			var cfg dirConfig
+			var cfg config
 			if err := json.Unmarshal(data, &cfg); err == nil {
 				if cfg.SessionsDir != "" && os.Getenv("CHECKPOINT_SESSIONS_DIR") == "" {
 					DefaultSessionsDir = cfg.SessionsDir
-				}
-				if cfg.SessionInfoDir != "" && os.Getenv("CHECKPOINT_SESSION_INFO_DIR") == "" {
-					SessionInfoDir = cfg.SessionInfoDir
 				}
 			}
 		}
