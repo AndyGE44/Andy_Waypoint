@@ -19,6 +19,8 @@ func NewManagerWithSession(sandboxMode bool) (*Manager, string, error) {
 		return nil, "", fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
+	loadConfig()
+
 	baseDir := filepath.Join(DefaultSessionsDir, sessionID)
 	manager := NewManager(baseDir)
 	manager.sessionID = sessionID

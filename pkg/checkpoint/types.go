@@ -1,5 +1,11 @@
 package checkpoint
 
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
 // All structs, constants, and interfaces
 
 type Manager struct {
@@ -32,9 +38,89 @@ type SessionInfo struct {
 	CreatedAt   int64  `json:"created_at"`
 }
 
-const (
-	DefaultSessionsDir = "/tmp/checkpoint-sessions"
-	SessionInfoDir     = "/tmp/checkpoint-sessions-info"
-)
+const SessionInfoDir = "/tmp/checkpoint-sessions-info"
+
+var DefaultSessionsDir = "/tmp/checkpoint-sessions"
+
+type config struct {
+	SessionsDir string `json:"sessions_dir"`
+}
+
+// loadConfig loads custom configuration.
+func loadConfig() {
+	// Determine config by precedence:
+	// 1) Direct environment variable of `CHECKPOINT_SESSIONS_DIR` take the highest precedence.
+	// 2) Determine config file path by precedence:
+	//    a) explicit `CHECKPOINT_CONFIG` environment variable
+	//    b) binary-side config: ./config.json (same dir as executable)
+	//    c) user config: $XDG_CONFIG_HOME/checkpoint-lite/config.json or ~/.checkpoint-lite/config.json
+	//    d) system config: /etc/checkpoint-lite/config.json
+	// 3) If none found, keep defaults as set above.
+
+	// 1) Direct env var overrides
+	if v := os.Getenv("CHECKPOINT_SESSIONS_DIR"); v != "" {
+		DefaultSessionsDir = v
+	}
+
+	// 2) Config file path determination
+
+	fileExists := func(path string) bool {
+		if path == "" {
+			return false
+		}
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		return false
+	}
+
+	// 2.a) explicit env var
+	cfgPath := os.Getenv("CHECKPOINT_CONFIG")
+
+	if cfgPath == "" {
+		// 2.b) binary-side
+		if exe, err := os.Executable(); err == nil {
+			exeDir := filepath.Dir(exe)
+			p := filepath.Join(exeDir, "config.json")
+			if fileExists(p) {
+				cfgPath = p
+			}
+		}
+	}
+
+	if cfgPath == "" {
+		// 2.c) user config
+		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+			p := filepath.Join(xdg, "checkpoint-lite", "config.json")
+			if fileExists(p) {
+				cfgPath = p
+			}
+		} else if home, err := os.UserHomeDir(); err == nil {
+			p := filepath.Join(home, ".checkpoint-lite", "config.json")
+			if fileExists(p) {
+				cfgPath = p
+			}
+		}
+	}
+
+	if cfgPath == "" {
+		// 2.d) system config
+		p := filepath.Join("/etc", "checkpoint-lite", "config.json")
+		if fileExists(p) {
+			cfgPath = p
+		}
+	}
+
+	if cfgPath != "" {
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			var cfg config
+			if err := json.Unmarshal(data, &cfg); err == nil {
+				if cfg.SessionsDir != "" && os.Getenv("CHECKPOINT_SESSIONS_DIR") == "" {
+					DefaultSessionsDir = cfg.SessionsDir
+				}
+			}
+		}
+	}
+}
 
 const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint
