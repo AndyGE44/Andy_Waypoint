@@ -9,14 +9,14 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.2.1"
+var Version = "v0.3.0"
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
-		fmt.Println("  --sandbox: Enable lightweight sandbox isolation (default: disabled)")
+		fmt.Println("    --sandbox: Enable lightweight sandbox isolation (default: disabled)")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
@@ -24,7 +24,7 @@ func main() {
 		fmt.Println("  cleanup <session> [--force]                  - Clean up session")
 		fmt.Println("  version                                      - Show version")
 		fmt.Println()
-		fmt.Printf("Version: %s, Author: Alex Jiakai Xu\n", Version)
+		fmt.Printf("Version: %s, DAPLab\n", Version)
 		os.Exit(1)
 	}
 
@@ -40,7 +40,7 @@ func main() {
 		// Parse flags
 		quiet := false
 		sandboxMode := false
-		
+
 		for i := 3; i < len(os.Args); i++ {
 			arg := os.Args[i]
 			if arg == "--quiet" {
@@ -218,7 +218,7 @@ func main() {
 		}
 		fmt.Printf("Session '%s' cleaned up successfully\n", sessionID)
 
-	case "version":
+	case "version", "--version", "-v":
 		fmt.Printf("checkpoint-lite version %s\n", Version)
 
 	default:
