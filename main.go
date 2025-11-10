@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
@@ -14,9 +15,11 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
-		fmt.Println("  init <work-directory> [--quiet]              - Initialize environment")
+		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
+		fmt.Println("  --sandbox: Enable lightweight sandbox isolation (default: disabled)")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
+		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
 		fmt.Println("  list <session>                               - List checkpoints")
 		fmt.Println("  cleanup <session> [--force]                  - Clean up session")
 		fmt.Println("  version                                      - Show version")
@@ -28,15 +31,30 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: init <work-directory> [--quiet]")
+			fmt.Println("Usage: init <work-directory> [--quiet] [--sandbox]")
+			fmt.Println("  --sandbox: Enable lightweight sandbox isolation (default: disabled)")
 			os.Exit(1)
 		}
 		workDir := os.Args[2]
 
-		quiet := len(os.Args) > 3 && os.Args[3] == "--quiet"
+		// Parse flags
+		quiet := false
+		sandboxMode := false
+		
+		for i := 3; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--quiet" {
+				quiet = true
+			} else if arg == "--sandbox" {
+				sandboxMode = true
+			} else {
+				fmt.Printf("Error: unknown flag: %s\n", arg)
+				os.Exit(1)
+			}
+		}
 
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession()
+		manager, sessionID, err := checkpoint.NewManagerWithSession(sandboxMode)
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
@@ -54,6 +72,9 @@ func main() {
 			fmt.Printf("Environment initialized!\n")
 			fmt.Printf("Session ID: %s\n", sessionID)
 			fmt.Printf("Work in this directory: %s\n", overlayPath)
+			if sandboxMode {
+				fmt.Printf("Sandbox mode: enabled (light)\n")
+			}
 			fmt.Printf("\nSave the session ID for future operations!\n")
 		}
 
@@ -102,6 +123,44 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("Checkpoint '%s' restored, new PID: %d\n", checkpointID, newPID)
+
+	case "exec":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: exec <session> <command> [args...]")
+			fmt.Println("  Execute a command in the checkpoint environment")
+			fmt.Println("  If sandbox mode is enabled, command runs in isolated sandbox")
+			os.Exit(1)
+		}
+		sessionID := os.Args[2]
+		command := os.Args[3]
+		args := os.Args[4:]
+
+		manager, err := checkpoint.LoadManager(sessionID)
+		if err != nil {
+			fmt.Printf("Error loading session: %v\n", err)
+			os.Exit(1)
+		}
+
+		cmd, err := manager.ExecuteCommand(command, args...)
+		if err != nil {
+			fmt.Printf("Error preparing command: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Connect stdin, stdout, stderr
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		// Run the command
+		if err := cmd.Run(); err != nil {
+			// Exit with the same code as the command
+			if exitError, ok := err.(*exec.ExitError); ok {
+				os.Exit(exitError.ExitCode())
+			}
+			fmt.Printf("Error executing command: %v\n", err)
+			os.Exit(1)
+		}
 
 	case "list":
 		if len(os.Args) != 3 {

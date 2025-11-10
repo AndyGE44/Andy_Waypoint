@@ -13,7 +13,7 @@ import (
 )
 
 // NewManagerWithSession creates a new manager with a random session ID
-func NewManagerWithSession() (*Manager, string, error) {
+func NewManagerWithSession(sandboxMode bool) (*Manager, string, error) {
 	sessionID, err := generateSessionID()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate session ID: %w", err)
@@ -22,6 +22,7 @@ func NewManagerWithSession() (*Manager, string, error) {
 	baseDir := filepath.Join(DefaultSessionsDir, sessionID)
 	manager := NewManager(baseDir)
 	manager.sessionID = sessionID
+	manager.sandboxMode = sandboxMode
 
 	// Save session info globally
 	if err := saveSessionInfo(sessionID, manager); err != nil {
@@ -42,6 +43,7 @@ func LoadManager(sessionID string) (*Manager, error) {
 	manager.sessionID = sessionID
 	manager.originalDir = sessionInfo.OriginalDir
 	manager.workOverlay = sessionInfo.WorkOverlay
+	manager.sandboxMode = sessionInfo.SandboxMode
 
 	return manager, nil
 }
@@ -63,6 +65,7 @@ func saveSessionInfo(sessionID string, manager *Manager) error {
 		BaseDir:     manager.baseDir,
 		OriginalDir: manager.originalDir,
 		WorkOverlay: manager.workOverlay,
+		SandboxMode: manager.sandboxMode,
 		CreatedAt:   time.Now().Unix(),
 	}
 
