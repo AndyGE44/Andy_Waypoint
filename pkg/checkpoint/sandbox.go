@@ -1,6 +1,7 @@
 package checkpoint
 
 // Lightweight filesystem isolation using Linux namespaces
+// Implementation inspired by https://github.com/binpash/try
 
 import (
 	"fmt"
