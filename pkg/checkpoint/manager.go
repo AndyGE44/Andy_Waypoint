@@ -32,6 +32,31 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
+// WorkOverlay returns the work overlay directory for this manager
+func (m *Manager) WorkOverlay() string {
+	return m.workOverlay
+}
+
+// SandboxMode returns whether sandbox mode is enabled for this manager
+func (m *Manager) SandboxMode() bool {
+	return m.sandboxMode
+}
+
+// ExecuteCommand executes a command in the checkpoint environment.
+// If sandbox mode is enabled, the command runs in an isolated sandbox.
+// Otherwise, it runs directly in the work overlay directory.
+func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
+	if m.SandboxMode() {
+		// Use sandbox isolation - pass originalDir so commands start there
+		return ExecuteInSandbox(m.workOverlay, m.originalDir, command, args...)
+	} else {
+		// Execute directly in work overlay (which contains the original directory's content)
+		cmd := exec.Command(command, args...)
+		cmd.Dir = m.workOverlay
+		return cmd, nil
+	}
+}
+
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
 // Deprecated: Since version 0.2.0, use CreateCheckpointParallel instead
 

@@ -3,7 +3,6 @@ package checkpoint
 // All filesystem-related operations
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -65,24 +64,17 @@ func (m *Manager) mountOverlay(lowerDir, upperDir, workDir, mountPoint string) e
 
 func (m *Manager) createFilesystemCheckpoint(overlayCkptPath string) error {
 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
-	currentWork := filepath.Join(m.overlayDir, "current", "work")
 
-	// Create checkpoint directories
+	// Create checkpoint directory for upper layer only
+	// OverlayFS requires an empty workdir at mount time.
 	checkpointUpper := filepath.Join(overlayCkptPath, "upper")
-	checkpointWork := filepath.Join(overlayCkptPath, "work")
 	os.MkdirAll(checkpointUpper, 0755)
-	os.MkdirAll(checkpointWork, 0755)
 
-	// Copy current upper and work directories to checkpoint
+	// Copy current upper directory to checkpoint
 	// Use rsync to preserve permissions and attributes
 	cmd := exec.Command("rsync", "-a", currentUpper+"/", checkpointUpper+"/")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy filesystem state: %w", err)
-	}
-
-	cmd = exec.Command("rsync", "-a", currentWork+"/", checkpointWork+"/")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to copy work directory: %w", err)
 	}
 
 	return nil
@@ -132,27 +124,40 @@ func (m *Manager) forceUnmount(mountPoint string) error {
 }
 
 // findMountsInDirectory finds all mount points within our session directory
+// Returns mounts sorted by depth (deepest first) for safe unmounting
 func (m *Manager) findMountsInDirectory() ([]string, error) {
-	var mounts []string
-
-	file, err := os.Open("/proc/mounts")
+	// Use findmnt to find all mounts under baseDir
+	// -r: raw output (no formatting)
+	// -n: no headings
+	// -o TARGET: output only the mount point
+	// -M: find mounts under the specified mountpoint
+	cmd := exec.Command("findmnt", "-r", "-n", "-o", "TARGET", "-M", m.baseDir)
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		// If findmnt fails, return empty slice (no mounts found)
+		return []string{}, nil
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) >= 2 {
-			mountPoint := fields[1]
-			if strings.HasPrefix(mountPoint, m.baseDir) {
-				mounts = append(mounts, mountPoint)
+	// Parse output and filter mounts that start with baseDir
+	var mounts []string
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && strings.HasPrefix(line, m.baseDir) {
+			mounts = append(mounts, line)
+		}
+	}
+
+	// Sort by depth (longest path = deepest mount, unmount first)
+	for i := 0; i < len(mounts); i++ {
+		for j := i + 1; j < len(mounts); j++ {
+			if len(mounts[i]) < len(mounts[j]) {
+				mounts[i], mounts[j] = mounts[j], mounts[i]
 			}
 		}
 	}
 
-	return mounts, scanner.Err()
+	return mounts, nil
 }
 
 // forceUnmountAll uses umount to unmount everything in our directory tree
@@ -203,35 +208,37 @@ func (m *Manager) restoreFilesystemState(checkpointID string) error {
 	// Unmount current overlay
 	exec.Command("umount", m.workOverlay).Run()
 
-	// Restore filesystem by replacing the current layers with the checkpoint layers
+	// Restore filesystem by replacing the current upper layer with the checkpoint
+	// @Georgios: removed workdir from the saved state, we recreate it empty rather than restoring from checkpoint.
 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
 	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
 	currentWork := filepath.Join(m.overlayDir, "current", "work")
-	checkpointWork := filepath.Join(m.overlayDir, checkpointID, "work")
 
 	// Backup current state
 	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
 	os.RemoveAll(backupUpper)
 	os.Rename(currentUpper, backupUpper)
-	backupWork := filepath.Join(m.overlayDir, "current", "work.backup")
-	os.RemoveAll(backupWork)
-	os.Rename(currentWork, backupWork)
 
-	// Copy checkpoint state to current
+	// Recreate workdir empty. We don't restore from checkpoint, we recreate it empty.
+	os.RemoveAll(currentWork)
+	if err := os.MkdirAll(currentWork, 0755); err != nil {
+		// Restore backup if we can't recreate workdir
+		os.Rename(backupUpper, currentUpper)
+		return fmt.Errorf("failed to recreate work directory: %w", err)
+	}
+
+	// Copy checkpoint upper layer to current
 	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
 	if err := cmd.Run(); err != nil {
+		// Restore backup if restore fails
+		os.Rename(backupUpper, currentUpper)
 		return fmt.Errorf("failed to restore filesystem state: %w", err)
-	}
-	cmd = exec.Command("rsync", "-a", checkpointWork+"/", currentWork+"/")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to restore work directory: %w", err)
 	}
 
 	// Remount overlay with restored state
 	if err := m.mountOverlay(m.originalDir, currentUpper, currentWork, m.workOverlay); err != nil {
 		// Restore backup if mount fails
 		os.Rename(backupUpper, currentUpper)
-		os.Rename(backupWork, currentWork)
 		return fmt.Errorf("failed to remount overlay after restore: %w", err)
 	}
 

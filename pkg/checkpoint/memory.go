@@ -38,18 +38,28 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		return -1, fmt.Errorf("failed to kill original process %d: %w", pid, err)
 	}
 
-	// Use CRIU to restore the process
-	criuCmd := fmt.Sprintf(
-		"criu restore --images-dir '%s' --shell-job --tcp-established",
-		criuPath,
-	)
+	var cmd *exec.Cmd
 
-	cmd := exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid: 0,
-			Gid: 0,
-		},
+	// Check if sandboxing is enabled
+	if m.SandboxMode() {
+		cmd, err = RestoreInSandbox(criuPath, m.workOverlay, nil)
+		if err != nil {
+			return -1, fmt.Errorf("failed to setup sandbox for restore: %w", err)
+		}
+	} else {
+		// Default behavior: no sandboxing
+		criuCmd := fmt.Sprintf(
+			"criu restore --images-dir '%s' --shell-job --tcp-established",
+			criuPath,
+		)
+
+		cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{
+				Uid: 0,
+				Gid: 0,
+			},
+		}
 	}
 
 	if err := cmd.Start(); err != nil {
