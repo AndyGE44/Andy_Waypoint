@@ -34,7 +34,7 @@ func (m *Manager) InitEnvironment(originalDir string) (string, error) {
 	os.MkdirAll(workDir, 0755)
 
 	// Mount overlay
-	err = m.mountOverlay(absDir, upperDir, workDir, m.workOverlay)
+	err = m.mountOverlay([]string{absDir}, upperDir, workDir, m.workOverlay)
 	if err != nil {
 		return "", fmt.Errorf("failed to mount overlay: %w", err)
 	}
@@ -47,12 +47,18 @@ func (m *Manager) InitEnvironment(originalDir string) (string, error) {
 	return m.workOverlay, nil
 }
 
-func (m *Manager) mountOverlay(lowerDir, upperDir, workDir, mountPoint string) error {
+// mountOverlay mounts an OverlayFS filesystem
+//
+//	lowerDir: list of multiple lower directories
+//	upperDir: upper directory
+//	workDir: work directory
+//	mountPoint: where to mount the overlay
+func (m *Manager) mountOverlay(lowerDir []string, upperDir, workDir, mountPoint string) error {
 	// Unmount if already mounted
 	exec.Command("umount", mountPoint).Run()
 
 	// Mount overlay
-	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
+	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", strings.Join(lowerDir, ":"), upperDir, workDir)
 	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", options, mountPoint)
 
 	if err := cmd.Run(); err != nil {
@@ -236,7 +242,7 @@ func (m *Manager) restoreFilesystemState(checkpointID string) error {
 	}
 
 	// Remount overlay with restored state
-	if err := m.mountOverlay(m.originalDir, currentUpper, currentWork, m.workOverlay); err != nil {
+	if err := m.mountOverlay([]string{m.originalDir}, currentUpper, currentWork, m.workOverlay); err != nil {
 		// Restore backup if mount fails
 		os.Rename(backupUpper, currentUpper)
 		return fmt.Errorf("failed to remount overlay after restore: %w", err)

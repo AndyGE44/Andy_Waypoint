@@ -20,13 +20,12 @@ type Manager struct {
 }
 
 type Metadata struct {
-	ID          string `json:"id"`
-	PID         int    `json:"pid"`
-	OverlayPath string `json:"overlay_path"`
-	CriuPath    string `json:"criu_path"`
-	Timestamp   int64  `json:"timestamp"`
-	OriginalDir string `json:"original_dir"`
-	SessionID   string `json:"session_id"`
+	ID          string   `json:"id"`
+	PID         int      `json:"pid"`
+	Timestamp   int64    `json:"timestamp"`
+	OriginalDir string   `json:"original_dir"`
+	SessionID   string   `json:"session_id"`
+	ParentList  []string `json:"parent_list,omitempty"`
 }
 
 type SessionInfo struct {

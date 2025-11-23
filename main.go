@@ -9,7 +9,7 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.3.0"
+var Version = "v0.4.0-alpha"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -43,11 +43,12 @@ func main() {
 
 		for i := 3; i < len(os.Args); i++ {
 			arg := os.Args[i]
-			if arg == "--quiet" {
+			switch arg {
+			case "--quiet":
 				quiet = true
-			} else if arg == "--sandbox" {
+			case "--sandbox":
 				sandboxMode = true
-			} else {
+			default:
 				fmt.Printf("Error: unknown flag: %s\n", arg)
 				os.Exit(1)
 			}
@@ -97,7 +98,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := manager.CreateCheckpointParallel(pid, checkpointID); err != nil {
+		if err := manager.CreateCheckpointNew(pid, checkpointID); err != nil {
 			fmt.Printf("Error creating checkpoint: %v\n", err)
 			os.Exit(1)
 		}

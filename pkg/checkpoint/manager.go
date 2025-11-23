@@ -12,21 +12,15 @@ import (
 )
 
 func NewManager(baseDir string) *Manager {
-	overlayDir := filepath.Join(baseDir, "overlays")
-	criuDir := filepath.Join(baseDir, "criu")
 	metadataDir := filepath.Join(baseDir, "metadata")
 	workOverlay := filepath.Join(baseDir, "work")
 
 	// Create directories
-	os.MkdirAll(overlayDir, 0755)
-	os.MkdirAll(criuDir, 0755)
 	os.MkdirAll(metadataDir, 0755)
 	os.MkdirAll(workOverlay, 0755)
 
 	return &Manager{
 		baseDir:     baseDir,
-		overlayDir:  overlayDir,
-		criuDir:     criuDir,
 		metadataDir: metadataDir,
 		workOverlay: workOverlay,
 	}
@@ -123,6 +117,48 @@ func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
 		Timestamp:   time.Now().Unix(),
 		OriginalDir: m.originalDir,
 		SessionID:   m.sessionID,
+	}
+
+	return m.saveMetadata(checkpointID, metadata)
+}
+
+func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
+	// Validate checkpoint ID
+	if checkpointID == "" || checkpointID == "current" {
+		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+	}
+
+	// Create a memory checkpoint to "~/current/criu/*.img"
+	if pid == SkipMemoryCheckpoint {
+		fmt.Println("Skipping memory checkpoint as per user request")
+	} else if !m.processExists(pid) {
+		return fmt.Errorf("process %d does not exist", pid)
+	} else {
+		currentCriuDir := filepath.Join(m.baseDir, "current", "criu")
+		memoryErr := m.createMemoryCheckpoint(pid, currentCriuDir)
+		if memoryErr != nil {
+			return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
+		}
+	}
+
+	// Unmount current overlay to ensure filesystem consistency
+	exec.Command("umount", m.workOverlay).Run()
+
+	// Rename "~/current/" to "~/<checkpointID>/"
+	currentDir := filepath.Join(m.baseDir, "current")
+	ckptDir := filepath.Join(m.baseDir, checkpointID)
+	if err := os.Rename(currentDir, ckptDir); err != nil {
+		return fmt.Errorf("failed to rename current directory: %w", err)
+	}
+
+	// 3. Save metadata
+	metadata := Metadata{
+		ID:          checkpointID,
+		PID:         pid,
+		Timestamp:   time.Now().Unix(),
+		OriginalDir: m.originalDir,
+		SessionID:   m.sessionID,
+		ParentList: ,
 	}
 
 	return m.saveMetadata(checkpointID, metadata)
