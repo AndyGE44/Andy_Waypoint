@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -56,71 +55,71 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, err
 
 // CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
 // This function uses goroutines to speed up the checkpoint creation process (x0.65)
-func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
-	// Validate checkpoint ID
-	if checkpointID == "" || checkpointID == "current" {
-		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
-	}
+// func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
+// 	// Validate checkpoint ID
+// 	if checkpointID == "" || checkpointID == "current" {
+// 		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+// 	}
 
-	// Check if process exists
-	if pid == SkipMemoryCheckpoint {
-		fmt.Println("Skipping memory checkpoint as per user request")
-	} else if !m.processExists(pid) {
-		return fmt.Errorf("process %d does not exist", pid)
-	}
+// 	// Check if process exists
+// 	if pid == SkipMemoryCheckpoint {
+// 		fmt.Println("Skipping memory checkpoint as per user request")
+// 	} else if !m.processExists(pid) {
+// 		return fmt.Errorf("process %d does not exist", pid)
+// 	}
 
-	// Create checkpoint directories
-	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
-	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
+// 	// Create checkpoint directories
+// 	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
+// 	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
 
-	os.MkdirAll(overlayCkptPath, 0755)
-	os.MkdirAll(criuCkptPath, 0755)
+// 	os.MkdirAll(overlayCkptPath, 0755)
+// 	os.MkdirAll(criuCkptPath, 0755)
 
-	var wg sync.WaitGroup
-	var filesystemErr, memoryErr error
+// 	var wg sync.WaitGroup
+// 	var filesystemErr, memoryErr error
 
-	wg.Add(2)
+// 	wg.Add(2)
 
-	// 1. Create a memory checkpoint
-	go func() {
-		defer wg.Done()
-		if pid == SkipMemoryCheckpoint {
-			memoryErr = nil
-			return
-		}
-		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
-	}()
+// 	// 1. Create a memory checkpoint
+// 	go func() {
+// 		defer wg.Done()
+// 		if pid == SkipMemoryCheckpoint {
+// 			memoryErr = nil
+// 			return
+// 		}
+// 		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
+// 	}()
 
-	// 2. Create a filesystem checkpoint
-	go func() {
-		defer wg.Done()
-		filesystemErr = m.createFilesystemCheckpoint(overlayCkptPath)
-	}()
+// 	// 2. Create a filesystem checkpoint
+// 	go func() {
+// 		defer wg.Done()
+// 		filesystemErr = m.createFilesystemCheckpoint(overlayCkptPath)
+// 	}()
 
-	// Wait for both goroutines to finish
-	wg.Wait()
+// 	// Wait for both goroutines to finish
+// 	wg.Wait()
 
-	// Check for errors
-	if memoryErr != nil {
-		return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
-	}
-	if filesystemErr != nil {
-		return fmt.Errorf("filesystem checkpoint failed: %w", filesystemErr)
-	}
+// 	// Check for errors
+// 	if memoryErr != nil {
+// 		return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
+// 	}
+// 	if filesystemErr != nil {
+// 		return fmt.Errorf("filesystem checkpoint failed: %w", filesystemErr)
+// 	}
 
-	// 3. Save metadata
-	metadata := Metadata{
-		ID:          checkpointID,
-		PID:         pid,
-		OverlayPath: overlayCkptPath,
-		CriuPath:    criuCkptPath,
-		Timestamp:   time.Now().Unix(),
-		OriginalDir: m.originalDir,
-		SessionID:   m.sessionID,
-	}
+// 	// 3. Save metadata
+// 	metadata := Metadata{
+// 		ID:          checkpointID,
+// 		PID:         pid,
+// 		OverlayPath: overlayCkptPath,
+// 		CriuPath:    criuCkptPath,
+// 		Timestamp:   time.Now().Unix(),
+// 		OriginalDir: m.originalDir,
+// 		SessionID:   m.sessionID,
+// 	}
 
-	return m.saveMetadata(checkpointID, metadata)
-}
+// 	return m.saveMetadata(checkpointID, metadata)
+// }
 
 func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
@@ -151,14 +150,37 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		return fmt.Errorf("failed to rename current directory: %w", err)
 	}
 
-	// 3. Save metadata
+	// Recreate a new empty "current" overlay for continued use
+	os.MkdirAll(currentDir, 0755)
+	upperDir := filepath.Join(m.baseDir, "current", "upper")
+	workDir := filepath.Join(m.baseDir, "current", "work")
+	os.MkdirAll(upperDir, 0755)
+	os.MkdirAll(workDir, 0755)
+
+	// Update current parent list to include this new checkpoint
+	parentList := m.currentParent
+	parentList = append(parentList, checkpointID)
+	m.currentParent = parentList
+
+	// Remount the new "current" overlay with mutliple lowerdirs
+	lowerDirs := []string{m.originalDir}
+	for _, parentID := range parentList {
+		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
+		lowerDirs = append(lowerDirs, parentOverlay)
+	}
+	err := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
+	if err != nil {
+		return fmt.Errorf("failed to remount new current overlay: %w", err)
+	}
+
+	// Save metadata
 	metadata := Metadata{
 		ID:          checkpointID,
 		PID:         pid,
 		Timestamp:   time.Now().Unix(),
 		OriginalDir: m.originalDir,
 		SessionID:   m.sessionID,
-		ParentList: ,
+		ParentList:  parentList,
 	}
 
 	return m.saveMetadata(checkpointID, metadata)

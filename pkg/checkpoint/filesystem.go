@@ -27,8 +27,8 @@ func (m *Manager) InitEnvironment(originalDir string) (string, error) {
 	m.originalDir = absDir
 
 	// Create overlay structure
-	upperDir := filepath.Join(m.overlayDir, "current", "upper")
-	workDir := filepath.Join(m.overlayDir, "current", "work")
+	upperDir := filepath.Join(m.baseDir, "current", "upper")
+	workDir := filepath.Join(m.baseDir, "current", "work")
 
 	os.MkdirAll(upperDir, 0755)
 	os.MkdirAll(workDir, 0755)
@@ -68,23 +68,23 @@ func (m *Manager) mountOverlay(lowerDir []string, upperDir, workDir, mountPoint 
 	return nil
 }
 
-func (m *Manager) createFilesystemCheckpoint(overlayCkptPath string) error {
-	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
+// func (m *Manager) createFilesystemCheckpoint(overlayCkptPath string) error {
+// 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
 
-	// Create checkpoint directory for upper layer only
-	// OverlayFS requires an empty workdir at mount time.
-	checkpointUpper := filepath.Join(overlayCkptPath, "upper")
-	os.MkdirAll(checkpointUpper, 0755)
+// 	// Create checkpoint directory for upper layer only
+// 	// OverlayFS requires an empty workdir at mount time.
+// 	checkpointUpper := filepath.Join(overlayCkptPath, "upper")
+// 	os.MkdirAll(checkpointUpper, 0755)
 
-	// Copy current upper directory to checkpoint
-	// Use rsync to preserve permissions and attributes
-	cmd := exec.Command("rsync", "-a", currentUpper+"/", checkpointUpper+"/")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to copy filesystem state: %w", err)
-	}
+// 	// Copy current upper directory to checkpoint
+// 	// Use rsync to preserve permissions and attributes
+// 	cmd := exec.Command("rsync", "-a", currentUpper+"/", checkpointUpper+"/")
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("failed to copy filesystem state: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // forceUnmountOverlays unmounts all overlay filesystems in the session
 func (m *Manager) forceUnmountOverlays() error {
@@ -254,30 +254,30 @@ func (m *Manager) restoreFilesystemState(checkpointID string) error {
 // restoreFilesystemStateQuick restores the filesystem state quickly by replacing the current layers with the checkpoint layers
 // This is an experimental method and might be unsafe if the current state is not clean
 // ... seems buggy, maybe not needed
-func (m *Manager) restoreFilesystemStateQuick(checkpointID string) error {
-	// Restore filesystem by replacing the current layers with the checkpoint layers
-	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
-	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
-	currentWork := filepath.Join(m.overlayDir, "current", "work")
-	checkpointWork := filepath.Join(m.overlayDir, checkpointID, "work")
+// func (m *Manager) restoreFilesystemStateQuick(checkpointID string) error {
+// 	// Restore filesystem by replacing the current layers with the checkpoint layers
+// 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
+// 	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
+// 	currentWork := filepath.Join(m.overlayDir, "current", "work")
+// 	checkpointWork := filepath.Join(m.overlayDir, checkpointID, "work")
 
-	// Backup current state
-	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
-	os.RemoveAll(backupUpper)
-	os.Rename(currentUpper, backupUpper)
-	backupWork := filepath.Join(m.overlayDir, "current", "work.backup")
-	os.RemoveAll(backupWork)
-	os.Rename(currentWork, backupWork)
+// 	// Backup current state
+// 	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
+// 	os.RemoveAll(backupUpper)
+// 	os.Rename(currentUpper, backupUpper)
+// 	backupWork := filepath.Join(m.overlayDir, "current", "work.backup")
+// 	os.RemoveAll(backupWork)
+// 	os.Rename(currentWork, backupWork)
 
-	// Copy checkpoint state to current
-	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to restore filesystem state: %w", err)
-	}
-	cmd = exec.Command("rsync", "-a", checkpointWork+"/", currentWork+"/")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to restore work directory: %w", err)
-	}
+// 	// Copy checkpoint state to current
+// 	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("failed to restore filesystem state: %w", err)
+// 	}
+// 	cmd = exec.Command("rsync", "-a", checkpointWork+"/", currentWork+"/")
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("failed to restore work directory: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
