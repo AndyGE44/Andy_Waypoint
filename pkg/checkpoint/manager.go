@@ -187,26 +187,71 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 }
 
 // RestoreCheckpoint restores both the filesystem and memory state
-func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
-	// Load metadata
-	metadata, err := m.loadMetadata(checkpointID)
+// func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
+// 	// Load metadata
+// 	metadata, err := m.loadMetadata(checkpointID)
+// 	if err != nil {
+// 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
+// 	}
+
+// 	// 1. Restore filesystem state
+// 	if err := m.restoreFilesystemState(checkpointID); err != nil {
+// 		return 0, fmt.Errorf("filesystem restore failed: %w", err)
+// 	}
+
+// 	// 2. Restore memory state using CRIU
+// 	if metadata.PID == SkipMemoryCheckpoint {
+// 		fmt.Println("Skipping memory restore as per user request")
+// 		return SkipMemoryCheckpoint, nil
+// 	}
+// 	newPID, err := m.restoreMemoryState(metadata.PID, metadata.CriuPath)
+// 	if err != nil {
+// 		return 0, fmt.Errorf("memory restore failed: %w", err)
+// 	}
+
+// 	return newPID, nil
+// }
+
+func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
+	// Load checkpointMetadata
+	checkpointMetadata, err := m.loadMetadata(checkpointID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
-	// 1. Restore filesystem state
-	if err := m.restoreFilesystemState(checkpointID); err != nil {
-		return 0, fmt.Errorf("filesystem restore failed: %w", err)
+	// Unmount current overlay to for future remount
+	exec.Command("umount", m.workOverlay).Run()
+
+	// Clear current upper and work directories
+	upperDir := filepath.Join(m.baseDir, "current", "upper")
+	workDir := filepath.Join(m.baseDir, "current", "work")
+	os.RemoveAll(upperDir)
+	os.RemoveAll(workDir)
+
+	// Rebuild lowerdirs list from checkpointMetadata.ParentList
+	lowerDirs := []string{m.originalDir}
+	for _, parentID := range checkpointMetadata.ParentList {
+		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
+		lowerDirs = append(lowerDirs, parentOverlay)
 	}
 
-	// 2. Restore memory state using CRIU
-	if metadata.PID == SkipMemoryCheckpoint {
+	// Remount overlay with the checkpoint's upper layer on top of the parent lowerdirs
+	os.MkdirAll(upperDir, 0755)
+	os.MkdirAll(workDir, 0755)
+	errFs := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
+	if errFs != nil {
+		return 0, fmt.Errorf("filesystem restore failed: %w", errFs)
+	}
+
+	// Restore memory state using CRIU
+	if checkpointMetadata.PID == SkipMemoryCheckpoint {
 		fmt.Println("Skipping memory restore as per user request")
 		return SkipMemoryCheckpoint, nil
 	}
-	newPID, err := m.restoreMemoryState(metadata.PID, metadata.CriuPath)
-	if err != nil {
-		return 0, fmt.Errorf("memory restore failed: %w", err)
+	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
+	newPID, errMem := m.restoreMemoryState(checkpointMetadata.PID, previousCriuPath)
+	if errMem != nil {
+		return 0, fmt.Errorf("memory restore failed: %w", errMem)
 	}
 
 	return newPID, nil

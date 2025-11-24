@@ -118,7 +118,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		newPID, err := manager.RestoreCheckpoint(checkpointID)
+		newPID, err := manager.RestoreCheckpointNew(checkpointID)
 		if err != nil {
 			fmt.Printf("Error restoring checkpoint: %v\n", err)
 			os.Exit(1)
