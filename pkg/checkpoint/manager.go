@@ -161,6 +161,7 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	parentList := m.currentParent
 	parentList = append(parentList, checkpointID)
 	m.currentParent = parentList
+	saveSessionInfo(m.sessionID, m)
 
 	// Remount the new "current" overlay with mutliple lowerdirs
 	lowerDirs := []string{m.originalDir}
@@ -234,6 +235,10 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
 		lowerDirs = append(lowerDirs, parentOverlay)
 	}
+
+	// Update current parent list to checkpoint's parent list
+	m.currentParent = checkpointMetadata.ParentList
+	saveSessionInfo(m.sessionID, m)
 
 	// Remount overlay with the checkpoint's upper layer on top of the parent lowerdirs
 	os.MkdirAll(upperDir, 0755)

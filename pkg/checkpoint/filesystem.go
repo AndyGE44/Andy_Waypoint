@@ -210,46 +210,46 @@ func (m *Manager) removeDirectoryWithRetry() error {
 	return nil
 }
 
-func (m *Manager) restoreFilesystemState(checkpointID string) error {
-	// Unmount current overlay
-	exec.Command("umount", m.workOverlay).Run()
+// func (m *Manager) restoreFilesystemState(checkpointID string) error {
+// 	// Unmount current overlay
+// 	exec.Command("umount", m.workOverlay).Run()
 
-	// Restore filesystem by replacing the current upper layer with the checkpoint
-	// @Georgios: removed workdir from the saved state, we recreate it empty rather than restoring from checkpoint.
-	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
-	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
-	currentWork := filepath.Join(m.overlayDir, "current", "work")
+// 	// Restore filesystem by replacing the current upper layer with the checkpoint
+// 	// @Georgios: removed workdir from the saved state, we recreate it empty rather than restoring from checkpoint.
+// 	currentUpper := filepath.Join(m.overlayDir, "current", "upper")
+// 	checkpointUpper := filepath.Join(m.overlayDir, checkpointID, "upper")
+// 	currentWork := filepath.Join(m.overlayDir, "current", "work")
 
-	// Backup current state
-	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
-	os.RemoveAll(backupUpper)
-	os.Rename(currentUpper, backupUpper)
+// 	// Backup current state
+// 	backupUpper := filepath.Join(m.overlayDir, "current", "upper.backup")
+// 	os.RemoveAll(backupUpper)
+// 	os.Rename(currentUpper, backupUpper)
 
-	// Recreate workdir empty. We don't restore from checkpoint, we recreate it empty.
-	os.RemoveAll(currentWork)
-	if err := os.MkdirAll(currentWork, 0755); err != nil {
-		// Restore backup if we can't recreate workdir
-		os.Rename(backupUpper, currentUpper)
-		return fmt.Errorf("failed to recreate work directory: %w", err)
-	}
+// 	// Recreate workdir empty. We don't restore from checkpoint, we recreate it empty.
+// 	os.RemoveAll(currentWork)
+// 	if err := os.MkdirAll(currentWork, 0755); err != nil {
+// 		// Restore backup if we can't recreate workdir
+// 		os.Rename(backupUpper, currentUpper)
+// 		return fmt.Errorf("failed to recreate work directory: %w", err)
+// 	}
 
-	// Copy checkpoint upper layer to current
-	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
-	if err := cmd.Run(); err != nil {
-		// Restore backup if restore fails
-		os.Rename(backupUpper, currentUpper)
-		return fmt.Errorf("failed to restore filesystem state: %w", err)
-	}
+// 	// Copy checkpoint upper layer to current
+// 	cmd := exec.Command("rsync", "-a", checkpointUpper+"/", currentUpper+"/")
+// 	if err := cmd.Run(); err != nil {
+// 		// Restore backup if restore fails
+// 		os.Rename(backupUpper, currentUpper)
+// 		return fmt.Errorf("failed to restore filesystem state: %w", err)
+// 	}
 
-	// Remount overlay with restored state
-	if err := m.mountOverlay([]string{m.originalDir}, currentUpper, currentWork, m.workOverlay); err != nil {
-		// Restore backup if mount fails
-		os.Rename(backupUpper, currentUpper)
-		return fmt.Errorf("failed to remount overlay after restore: %w", err)
-	}
+// 	// Remount overlay with restored state
+// 	if err := m.mountOverlay([]string{m.originalDir}, currentUpper, currentWork, m.workOverlay); err != nil {
+// 		// Restore backup if mount fails
+// 		os.Rename(backupUpper, currentUpper)
+// 		return fmt.Errorf("failed to remount overlay after restore: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // restoreFilesystemStateQuick restores the filesystem state quickly by replacing the current layers with the checkpoint layers
 // This is an experimental method and might be unsafe if the current state is not clean
