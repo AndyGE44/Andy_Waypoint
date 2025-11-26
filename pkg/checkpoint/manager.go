@@ -176,6 +176,17 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		return fmt.Errorf("failed to remount new current overlay: %w", err)
 	}
 
+	// Restore the memory state into the new overlay
+	// (so that the process can continue running in the new overlay)
+	if pid != SkipMemoryCheckpoint {
+		currentCriuDir := filepath.Join(m.baseDir, checkpointID, "criu")
+		newPID, errMem := m.restoreMemoryState(pid, currentCriuDir)
+		if errMem != nil {
+			return fmt.Errorf("memory restore into new overlay failed: %w", errMem)
+		}
+		fmt.Printf("Process %d restored into new overlay with PID %d\n", pid, newPID)
+	}
+
 	// Save metadata
 	metadata := Metadata{
 		ID:          checkpointID,
