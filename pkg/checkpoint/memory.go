@@ -3,6 +3,7 @@ package checkpoint
 // All CRIU-related operations
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"syscall"
@@ -17,6 +18,9 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"--tcp-established", // Include TCP connections
 		"--leave-running")   // Keep process running after checkpoint
 
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Uid: 0,
@@ -25,6 +29,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	}
 
 	if err := cmd.Run(); err != nil {
+		stderr := stderrBuf.String()
+		fmt.Printf("CRIU stderr: %s\n", stderr)
 		return fmt.Errorf("failed to create memory checkpoint: %w", err)
 	}
 

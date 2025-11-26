@@ -134,6 +134,7 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		return fmt.Errorf("process %d does not exist", pid)
 	} else {
 		currentCriuDir := filepath.Join(m.baseDir, "current", "criu")
+		os.RemoveAll(currentCriuDir)
 		os.MkdirAll(currentCriuDir, 0755)
 		memoryErr := m.createMemoryCheckpoint(pid, currentCriuDir)
 		if memoryErr != nil {
