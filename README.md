@@ -101,7 +101,7 @@ cd checkpoint-lite
 go build -o checkpoint-lite
 ```
 
-### Check Checkpoint-Lite Version (since v0.2.1)
+### Check Checkpoint-Lite Version
 
 ```bash
 ./checkpoint-lite version
@@ -263,8 +263,6 @@ Those operations are performed in parallel using goroutines to reduce the time t
 - **CRIU Restore**: Recreates process memory and execution state from checkpoint images
 
 For the robust performance, the restoration is done in sequential order, first restoring the OverlayFS state and then the memory state.
-
-> TODO: Think about the re-mount operation optimization.
 
 ### Session Isolation
 

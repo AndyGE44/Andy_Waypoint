@@ -96,7 +96,7 @@ func (m *Manager) findProcessesUsingDirectory() ([]int, error) {
 	cmd := exec.Command("lsof", "+D", m.baseDir)
 	output, err := cmd.Output()
 	if err != nil {
-		// lsof returns non-zero exit code if no files found, which is not an error
+		// lsof returns a non-zero exit code if no files are found, which is not an error
 		return []int{}, nil
 	}
 

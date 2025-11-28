@@ -1,5 +1,7 @@
 package checkpoint
 
+// Top-level checkpoint manager functions
+
 import (
 	"fmt"
 	"os"
@@ -43,9 +45,10 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, err
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
 // Deprecated: Since version 0.2.0, use CreateCheckpointParallel instead
 
-// CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
-// This function uses goroutines to speed up the checkpoint creation process (x0.65)
+// CreateCheckpointParallel creates both checkpoints in parallel, speeding up the process (approx x0.65)
+// Deprecated: Since version 0.4.0, use CreateCheckpointNew instead
 
+// CreateCheckpointNew creates a new checkpoint with the given ID
 func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
 	if checkpointID == "" || checkpointID == "current" {
@@ -88,14 +91,10 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	parentList := m.currentParent
 	parentList = append(parentList, checkpointID)
 	m.currentParent = parentList
-	saveSessionInfo(m.sessionID, m)
+	m.syncManagerToSession()
 
-	// Remount the new "current" overlay with mutliple lowerdirs
-	lowerDirs := []string{m.originalDir}
-	for _, parentID := range parentList {
-		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
-		lowerDirs = append(lowerDirs, parentOverlay)
-	}
+	// Remount the new "current" overlay with multiple lowerdirs
+	lowerDirs := m.buildOverlayLayers(parentList)
 	err := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
 	if err != nil {
 		return fmt.Errorf("failed to remount new current overlay: %w", err)
@@ -132,7 +131,7 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
-	// Unmount current overlay to for future remount
+	// Unmount current overlay for future remount
 	exec.Command("umount", m.workOverlay).Run()
 
 	// Clear current upper and work directories
@@ -142,15 +141,11 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 	os.RemoveAll(workDir)
 
 	// Rebuild lowerdirs list from checkpointMetadata.ParentList
-	lowerDirs := []string{m.originalDir}
-	for _, parentID := range checkpointMetadata.ParentList {
-		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
-		lowerDirs = append(lowerDirs, parentOverlay)
-	}
+	lowerDirs := m.buildOverlayLayers(checkpointMetadata.ParentList)
 
 	// Update current parent list to checkpoint's parent list
 	m.currentParent = checkpointMetadata.ParentList
-	saveSessionInfo(m.sessionID, m)
+	m.syncManagerToSession()
 
 	// Remount overlay with the checkpoint's upper layer on top of the parent lowerdirs
 	os.MkdirAll(upperDir, 0755)

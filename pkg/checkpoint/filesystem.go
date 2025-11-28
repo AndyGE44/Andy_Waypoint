@@ -191,3 +191,15 @@ func (m *Manager) removeDirectoryWithRetry() error {
 
 	return nil
 }
+
+// buildOverlayLayers builds the list of overlay lower directories
+// from the original directory and parent checkpoints' upper layers
+// note: parentList is ordered from oldest to newest; the order matters!
+func (m *Manager) buildOverlayLayers(parentList []string) []string {
+	lowerDirs := []string{m.originalDir}
+	for _, parentID := range parentList {
+		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
+		lowerDirs = append(lowerDirs, parentOverlay)
+	}
+	return lowerDirs
+}

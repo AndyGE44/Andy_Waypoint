@@ -36,34 +36,6 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	return nil
 }
 
-func (m *Manager) createMemoryCheckpointLive(pid int, criuPath string) error {
-	// Use CRIU to dump the process
-	cmd := exec.Command("criu", "dump",
-		"-t", fmt.Sprintf("%d", pid),
-		"-D", criuPath,
-		"--shell-job",
-		"--tcp-established", // Include TCP connections
-		"--leave-running")   // Keep process running after checkpoint
-
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid: 0,
-			Gid: 0,
-		},
-	}
-
-	if err := cmd.Run(); err != nil {
-		stderr := stderrBuf.String()
-		fmt.Printf("CRIU stderr: %s\n", stderr)
-		return fmt.Errorf("failed to create memory checkpoint: %w", err)
-	}
-
-	return nil
-}
-
 func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 	// Kill the original process if it exists
 	err := m.killProcess(pid)

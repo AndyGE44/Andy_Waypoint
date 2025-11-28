@@ -1,13 +1,14 @@
 package checkpoint
 
+// All structs, constants, and interfaces
+
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
 )
 
-// All structs, constants, and interfaces
-
+// Manager manages runtime checkpoint sessions, the main struct.
 type Manager struct {
 	baseDir       string   // Base directory for this session, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8
 	metadataDir   string   // Directory for metadata files, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/metadata
@@ -18,6 +19,8 @@ type Manager struct {
 	currentParent []string // Current parent checkpoints
 }
 
+// Metadata represents the metadata stored for each checkpoint.
+// It is serialized to JSON and stored in the per-session metadata directory for snapshot tracking.
 type Metadata struct {
 	ID          string   `json:"id"`
 	PID         int      `json:"pid"`
@@ -27,6 +30,8 @@ type Metadata struct {
 	ParentList  []string `json:"parent_list,omitempty"`
 }
 
+// SessionInfo holds information about a checkpoint session.
+// It is serialized to JSON and stored in a globally known location for session tracking.
 type SessionInfo struct {
 	SessionID     string   `json:"session_id"`
 	BaseDir       string   `json:"base_dir"`
@@ -37,8 +42,13 @@ type SessionInfo struct {
 	CurrentParent []string `json:"current_parent"`
 }
 
+const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint
 const SessionInfoDir = "/tmp/checkpoint-sessions-info"
 
+// The below section handles configuration loading.
+
+// DefaultSessionsDir is the default directory for storing checkpoint sessions.
+// It can be overridden by configuration.
 var DefaultSessionsDir = "/tmp/checkpoint-sessions"
 
 type config struct {
@@ -121,5 +131,3 @@ func loadConfig() {
 		}
 	}
 }
-
-const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint
