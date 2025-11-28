@@ -74,7 +74,7 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 	var cmd *exec.Cmd
 
 	// Check if sandboxing is enabled
-	if m.SandboxMode() {
+	if m.sandboxMode {
 		cmd, err = RestoreInSandbox(criuPath, m.workOverlay, nil)
 		if err != nil {
 			return -1, fmt.Errorf("failed to setup sandbox for restore: %w", err)

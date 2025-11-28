@@ -25,21 +25,11 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
-// WorkOverlay returns the work overlay directory for this manager
-func (m *Manager) WorkOverlay() string {
-	return m.workOverlay
-}
-
-// SandboxMode returns whether sandbox mode is enabled for this manager
-func (m *Manager) SandboxMode() bool {
-	return m.sandboxMode
-}
-
 // ExecuteCommand executes a command in the checkpoint environment.
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
 func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
-	if m.SandboxMode() {
+	if m.sandboxMode {
 		// Use sandbox isolation - pass originalDir so commands start there
 		return ExecuteInSandbox(m.workOverlay, m.originalDir, command, args...)
 	} else {
@@ -55,71 +45,6 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, err
 
 // CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
 // This function uses goroutines to speed up the checkpoint creation process (x0.65)
-// func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
-// 	// Validate checkpoint ID
-// 	if checkpointID == "" || checkpointID == "current" {
-// 		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
-// 	}
-
-// 	// Check if process exists
-// 	if pid == SkipMemoryCheckpoint {
-// 		fmt.Println("Skipping memory checkpoint as per user request")
-// 	} else if !m.processExists(pid) {
-// 		return fmt.Errorf("process %d does not exist", pid)
-// 	}
-
-// 	// Create checkpoint directories
-// 	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
-// 	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
-
-// 	os.MkdirAll(overlayCkptPath, 0755)
-// 	os.MkdirAll(criuCkptPath, 0755)
-
-// 	var wg sync.WaitGroup
-// 	var filesystemErr, memoryErr error
-
-// 	wg.Add(2)
-
-// 	// 1. Create a memory checkpoint
-// 	go func() {
-// 		defer wg.Done()
-// 		if pid == SkipMemoryCheckpoint {
-// 			memoryErr = nil
-// 			return
-// 		}
-// 		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
-// 	}()
-
-// 	// 2. Create a filesystem checkpoint
-// 	go func() {
-// 		defer wg.Done()
-// 		filesystemErr = m.createFilesystemCheckpoint(overlayCkptPath)
-// 	}()
-
-// 	// Wait for both goroutines to finish
-// 	wg.Wait()
-
-// 	// Check for errors
-// 	if memoryErr != nil {
-// 		return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
-// 	}
-// 	if filesystemErr != nil {
-// 		return fmt.Errorf("filesystem checkpoint failed: %w", filesystemErr)
-// 	}
-
-// 	// 3. Save metadata
-// 	metadata := Metadata{
-// 		ID:          checkpointID,
-// 		PID:         pid,
-// 		OverlayPath: overlayCkptPath,
-// 		CriuPath:    criuCkptPath,
-// 		Timestamp:   time.Now().Unix(),
-// 		OriginalDir: m.originalDir,
-// 		SessionID:   m.sessionID,
-// 	}
-
-// 	return m.saveMetadata(checkpointID, metadata)
-// }
 
 func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
@@ -199,32 +124,6 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 
 	return m.saveMetadata(checkpointID, metadata)
 }
-
-// RestoreCheckpoint restores both the filesystem and memory state
-// func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
-// 	// Load metadata
-// 	metadata, err := m.loadMetadata(checkpointID)
-// 	if err != nil {
-// 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
-// 	}
-
-// 	// 1. Restore filesystem state
-// 	if err := m.restoreFilesystemState(checkpointID); err != nil {
-// 		return 0, fmt.Errorf("filesystem restore failed: %w", err)
-// 	}
-
-// 	// 2. Restore memory state using CRIU
-// 	if metadata.PID == SkipMemoryCheckpoint {
-// 		fmt.Println("Skipping memory restore as per user request")
-// 		return SkipMemoryCheckpoint, nil
-// 	}
-// 	newPID, err := m.restoreMemoryState(metadata.PID, metadata.CriuPath)
-// 	if err != nil {
-// 		return 0, fmt.Errorf("memory restore failed: %w", err)
-// 	}
-
-// 	return newPID, nil
-// }
 
 func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 	// Load checkpointMetadata

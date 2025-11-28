@@ -9,14 +9,13 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.4.0-alpha"
+var Version = "v0.4.0-beta"
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
-		fmt.Println("    --sandbox: Enable lightweight sandbox isolation (default: disabled)")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
