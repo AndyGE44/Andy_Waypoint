@@ -3,6 +3,7 @@ package checkpoint
 // All CRIU-related operations
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"syscall"
@@ -14,8 +15,10 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
 		"--shell-job",
-		"--tcp-established", // Include TCP connections
-		"--leave-running")   // Keep process running after checkpoint
+		"--tcp-established") // Include TCP connections
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
@@ -25,6 +28,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	}
 
 	if err := cmd.Run(); err != nil {
+		stderr := stderrBuf.String()
+		fmt.Printf("CRIU stderr: %s\n", stderr)
 		return fmt.Errorf("failed to create memory checkpoint: %w", err)
 	}
 
@@ -41,7 +46,7 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 	var cmd *exec.Cmd
 
 	// Check if sandboxing is enabled
-	if m.SandboxMode() {
+	if m.sandboxMode {
 		cmd, err = RestoreInSandbox(criuPath, m.workOverlay, nil)
 		if err != nil {
 			return -1, fmt.Errorf("failed to setup sandbox for restore: %w", err)

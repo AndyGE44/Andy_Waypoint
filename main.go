@@ -1,5 +1,8 @@
 package main
 
+// checkpoint-lite: A lightweight process checkpointing and restoration tool
+// Developed by Alex Xu, DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
+
 import (
 	"fmt"
 	"os"
@@ -9,14 +12,13 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.3.0"
+var Version = "v0.4.0"
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
-		fmt.Println("    --sandbox: Enable lightweight sandbox isolation (default: disabled)")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
@@ -43,11 +45,12 @@ func main() {
 
 		for i := 3; i < len(os.Args); i++ {
 			arg := os.Args[i]
-			if arg == "--quiet" {
+			switch arg {
+			case "--quiet":
 				quiet = true
-			} else if arg == "--sandbox" {
+			case "--sandbox":
 				sandboxMode = true
-			} else {
+			default:
 				fmt.Printf("Error: unknown flag: %s\n", arg)
 				os.Exit(1)
 			}
@@ -97,7 +100,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := manager.CreateCheckpointParallel(pid, checkpointID); err != nil {
+		if err := manager.CreateCheckpointNew(pid, checkpointID); err != nil {
 			fmt.Printf("Error creating checkpoint: %v\n", err)
 			os.Exit(1)
 		}
@@ -117,7 +120,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		newPID, err := manager.RestoreCheckpoint(checkpointID)
+		newPID, err := manager.RestoreCheckpointNew(checkpointID)
 		if err != nil {
 			fmt.Printf("Error restoring checkpoint: %v\n", err)
 			os.Exit(1)

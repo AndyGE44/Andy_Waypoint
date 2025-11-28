@@ -25,6 +25,7 @@ func NewManagerWithSession(sandboxMode bool) (*Manager, string, error) {
 	manager := NewManager(baseDir)
 	manager.sessionID = sessionID
 	manager.sandboxMode = sandboxMode
+	manager.currentParent = []string{}
 
 	// Save session info globally
 	if err := saveSessionInfo(sessionID, manager); err != nil {
@@ -46,6 +47,7 @@ func LoadManager(sessionID string) (*Manager, error) {
 	manager.originalDir = sessionInfo.OriginalDir
 	manager.workOverlay = sessionInfo.WorkOverlay
 	manager.sandboxMode = sessionInfo.SandboxMode
+	manager.currentParent = sessionInfo.CurrentParent
 
 	return manager, nil
 }
@@ -59,16 +61,18 @@ func generateSessionID() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
+// Convert Manager to SessionInfo and save to the fixed-path global store
 func saveSessionInfo(sessionID string, manager *Manager) error {
 	os.MkdirAll(SessionInfoDir, 0755)
 
 	sessionInfo := SessionInfo{
-		SessionID:   sessionID,
-		BaseDir:     manager.baseDir,
-		OriginalDir: manager.originalDir,
-		WorkOverlay: manager.workOverlay,
-		SandboxMode: manager.sandboxMode,
-		CreatedAt:   time.Now().Unix(),
+		SessionID:     sessionID,
+		BaseDir:       manager.baseDir,
+		OriginalDir:   manager.originalDir,
+		WorkOverlay:   manager.workOverlay,
+		SandboxMode:   manager.sandboxMode,
+		CreatedAt:     time.Now().Unix(),
+		CurrentParent: manager.currentParent,
 	}
 
 	data, err := json.MarshalIndent(sessionInfo, "", "  ")
@@ -80,6 +84,7 @@ func saveSessionInfo(sessionID string, manager *Manager) error {
 	return os.WriteFile(sessionFile, data, 0644)
 }
 
+// Load SessionInfo from the fixed-path global store
 func loadSessionInfo(sessionID string) (*SessionInfo, error) {
 	sessionFile := filepath.Join(SessionInfoDir, sessionID+".json")
 
@@ -93,6 +98,7 @@ func loadSessionInfo(sessionID string) (*SessionInfo, error) {
 	return &sessionInfo, err
 }
 
+// Remove SessionInfo JSON file from the fixed-path global store
 func removeSessionInfo(sessionID string) error {
 	sessionFile := filepath.Join(SessionInfoDir, sessionID+".json")
 	return os.Remove(sessionFile)

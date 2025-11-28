@@ -1,5 +1,7 @@
 package checkpoint
 
+// Top-level checkpoint manager functions
+
 import (
 	"fmt"
 	"os"
@@ -7,46 +9,29 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 func NewManager(baseDir string) *Manager {
-	overlayDir := filepath.Join(baseDir, "overlays")
-	criuDir := filepath.Join(baseDir, "criu")
 	metadataDir := filepath.Join(baseDir, "metadata")
 	workOverlay := filepath.Join(baseDir, "work")
 
 	// Create directories
-	os.MkdirAll(overlayDir, 0755)
-	os.MkdirAll(criuDir, 0755)
 	os.MkdirAll(metadataDir, 0755)
 	os.MkdirAll(workOverlay, 0755)
 
 	return &Manager{
 		baseDir:     baseDir,
-		overlayDir:  overlayDir,
-		criuDir:     criuDir,
 		metadataDir: metadataDir,
 		workOverlay: workOverlay,
 	}
-}
-
-// WorkOverlay returns the work overlay directory for this manager
-func (m *Manager) WorkOverlay() string {
-	return m.workOverlay
-}
-
-// SandboxMode returns whether sandbox mode is enabled for this manager
-func (m *Manager) SandboxMode() bool {
-	return m.sandboxMode
 }
 
 // ExecuteCommand executes a command in the checkpoint environment.
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
 func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
-	if m.SandboxMode() {
+	if m.sandboxMode {
 		// Use sandbox isolation - pass originalDir so commands start there
 		return ExecuteInSandbox(m.workOverlay, m.originalDir, command, args...)
 	} else {
@@ -60,95 +45,125 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, err
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
 // Deprecated: Since version 0.2.0, use CreateCheckpointParallel instead
 
-// CreateCheckpointParallel creates both the filesystem and memory checkpoints in parallel
-// This function uses goroutines to speed up the checkpoint creation process (x0.65)
-func (m *Manager) CreateCheckpointParallel(pid int, checkpointID string) error {
+// CreateCheckpointParallel creates both checkpoints in parallel, speeding up the process (approx x0.65)
+// Deprecated: Since version 0.4.0, use CreateCheckpointNew instead
+
+// CreateCheckpointNew creates a new checkpoint with the given ID
+func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
 	if checkpointID == "" || checkpointID == "current" {
 		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
 	}
 
-	// Check if process exists
+	// Create a memory checkpoint to "~/current/criu/*.img"
 	if pid == SkipMemoryCheckpoint {
 		fmt.Println("Skipping memory checkpoint as per user request")
 	} else if !m.processExists(pid) {
 		return fmt.Errorf("process %d does not exist", pid)
-	}
-
-	// Create checkpoint directories
-	overlayCkptPath := filepath.Join(m.overlayDir, checkpointID)
-	criuCkptPath := filepath.Join(m.criuDir, checkpointID)
-
-	os.MkdirAll(overlayCkptPath, 0755)
-	os.MkdirAll(criuCkptPath, 0755)
-
-	var wg sync.WaitGroup
-	var filesystemErr, memoryErr error
-
-	wg.Add(2)
-
-	// 1. Create a memory checkpoint
-	go func() {
-		defer wg.Done()
-		if pid == SkipMemoryCheckpoint {
-			memoryErr = nil
-			return
+	} else {
+		currentCriuDir := filepath.Join(m.baseDir, "current", "criu")
+		os.RemoveAll(currentCriuDir)
+		os.MkdirAll(currentCriuDir, 0755)
+		memoryErr := m.createMemoryCheckpoint(pid, currentCriuDir)
+		if memoryErr != nil {
+			return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
 		}
-		memoryErr = m.createMemoryCheckpoint(pid, criuCkptPath)
-	}()
-
-	// 2. Create a filesystem checkpoint
-	go func() {
-		defer wg.Done()
-		filesystemErr = m.createFilesystemCheckpoint(overlayCkptPath)
-	}()
-
-	// Wait for both goroutines to finish
-	wg.Wait()
-
-	// Check for errors
-	if memoryErr != nil {
-		return fmt.Errorf("memory checkpoint failed: %w", memoryErr)
-	}
-	if filesystemErr != nil {
-		return fmt.Errorf("filesystem checkpoint failed: %w", filesystemErr)
 	}
 
-	// 3. Save metadata
+	// Unmount current overlay to ensure filesystem consistency
+	exec.Command("umount", m.workOverlay).Run()
+
+	// Rename "~/current/" to "~/<checkpointID>/"
+	currentDir := filepath.Join(m.baseDir, "current")
+	ckptDir := filepath.Join(m.baseDir, checkpointID)
+	if err := os.Rename(currentDir, ckptDir); err != nil {
+		return fmt.Errorf("failed to rename current directory: %w", err)
+	}
+
+	// Recreate a new empty "current" overlay for continued use
+	os.MkdirAll(currentDir, 0755)
+	upperDir := filepath.Join(m.baseDir, "current", "upper")
+	workDir := filepath.Join(m.baseDir, "current", "work")
+	os.MkdirAll(upperDir, 0755)
+	os.MkdirAll(workDir, 0755)
+
+	// Update current parent list to include this new checkpoint
+	parentList := m.currentParent
+	parentList = append(parentList, checkpointID)
+	m.currentParent = parentList
+	m.syncManagerToSession()
+
+	// Remount the new "current" overlay with multiple lowerdirs
+	lowerDirs := m.buildOverlayLayers(parentList)
+	err := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
+	if err != nil {
+		return fmt.Errorf("failed to remount new current overlay: %w", err)
+	}
+
+	// Restore the memory state into the new overlay
+	// (so that the process can continue running in the new overlay)
+	if pid != SkipMemoryCheckpoint {
+		currentCriuDir := filepath.Join(m.baseDir, checkpointID, "criu")
+		newPID, errMem := m.restoreMemoryState(pid, currentCriuDir)
+		if errMem != nil {
+			return fmt.Errorf("memory restore into new overlay failed: %w", errMem)
+		}
+		fmt.Printf("Process %d restored into new overlay with PID %d\n", pid, newPID)
+	}
+
+	// Save metadata
 	metadata := Metadata{
 		ID:          checkpointID,
 		PID:         pid,
-		OverlayPath: overlayCkptPath,
-		CriuPath:    criuCkptPath,
 		Timestamp:   time.Now().Unix(),
 		OriginalDir: m.originalDir,
 		SessionID:   m.sessionID,
+		ParentList:  parentList,
 	}
 
 	return m.saveMetadata(checkpointID, metadata)
 }
 
-// RestoreCheckpoint restores both the filesystem and memory state
-func (m *Manager) RestoreCheckpoint(checkpointID string) (int, error) {
-	// Load metadata
-	metadata, err := m.loadMetadata(checkpointID)
+func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
+	// Load checkpointMetadata
+	checkpointMetadata, err := m.loadMetadata(checkpointID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
-	// 1. Restore filesystem state
-	if err := m.restoreFilesystemState(checkpointID); err != nil {
-		return 0, fmt.Errorf("filesystem restore failed: %w", err)
+	// Unmount current overlay for future remount
+	exec.Command("umount", m.workOverlay).Run()
+
+	// Clear current upper and work directories
+	upperDir := filepath.Join(m.baseDir, "current", "upper")
+	workDir := filepath.Join(m.baseDir, "current", "work")
+	os.RemoveAll(upperDir)
+	os.RemoveAll(workDir)
+
+	// Rebuild lowerdirs list from checkpointMetadata.ParentList
+	lowerDirs := m.buildOverlayLayers(checkpointMetadata.ParentList)
+
+	// Update current parent list to checkpoint's parent list
+	m.currentParent = checkpointMetadata.ParentList
+	m.syncManagerToSession()
+
+	// Remount overlay with the checkpoint's upper layer on top of the parent lowerdirs
+	os.MkdirAll(upperDir, 0755)
+	os.MkdirAll(workDir, 0755)
+	errFs := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
+	if errFs != nil {
+		return 0, fmt.Errorf("filesystem restore failed: %w", errFs)
 	}
 
-	// 2. Restore memory state using CRIU
-	if metadata.PID == SkipMemoryCheckpoint {
+	// Restore memory state using CRIU
+	if checkpointMetadata.PID == SkipMemoryCheckpoint {
 		fmt.Println("Skipping memory restore as per user request")
 		return SkipMemoryCheckpoint, nil
 	}
-	newPID, err := m.restoreMemoryState(metadata.PID, metadata.CriuPath)
-	if err != nil {
-		return 0, fmt.Errorf("memory restore failed: %w", err)
+	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
+	newPID, errMem := m.restoreMemoryState(checkpointMetadata.PID, previousCriuPath)
+	if errMem != nil {
+		return 0, fmt.Errorf("memory restore failed: %w", errMem)
 	}
 
 	return newPID, nil
