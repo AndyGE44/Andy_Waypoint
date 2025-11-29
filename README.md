@@ -14,6 +14,7 @@ by directly orchestrating existing kernel features.
 - **Hybrid State Capture**: Combines filesystem (OverlayFS) and memory (CRIU) checkpointing
 - **Multi-Session Support**: Concurrent usage by multiple applications with isolated sessions
 - **Minimal Overhead**: Direct system calls without unnecessary container abstractions
+- **Minimal File IO**: Uses multiple lower-layer designs to achieve true inter-checkpoint deduplication
 - **Simple CLI**: Straightforward command-line interface for checkpoint operations
 - **Session Management**: Automatic cleanup and resource management
 
@@ -105,12 +106,33 @@ go build -o checkpoint-lite
 
 ```bash
 ./checkpoint-lite version
-# Output: checkpoint-lite version v0.2.1
+# Output: checkpoint-lite version v0.4.0
 ```
 
 ## Usage 🗂
 
+<!--
+New architect diagram to be added later...
 ![checkpoint-lite workflow](./docs/checkpoint-lite.drawio.png)
+-->
+
+### 0. [Optional] Configure Global Settings
+
+You can create a configuration file to set global options. Example content:
+```json
+{
+  "sessions_dir": "/custom/path/checkpoint-sessions"
+}
+```
+
+Noticed the configuration takes effect in the following order of precedence:
+1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`
+2. Load from configuration file (if exists):
+   - Explicit `CHECKPOINT_CONFIG` environment variable
+   - Binary-side config: `./config.json` (same dir as executable)
+   - User config: `$XDG_CONFIG_HOME/checkpoint-lite/config.json` or `~/.checkpoint-lite/config.json`
+   - System config: `/etc/checkpoint-lite/config.json`
+3. Default settings.
 
 ### 1. Initialize Environment
 
@@ -133,6 +155,7 @@ Save the session ID for future operations!
 
 Special options:
 - `--quiet` to output only the session ID and work directory, separated by a comma. (Since v0.2.1)
+- `--sandbox` to config the execution sandbox for the managed application. (Since v0.3.0)
 
 ### 2. Run Your Application
 
@@ -153,26 +176,34 @@ reducing 40% of the time compared to sequential execution in our tests.
 Special options:
 - Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`. However, this should only be used if you are sure that the application does not relate to the managed directory, or you are not running any application at all and simply want to capture the filesystem state.
 
-### 4. Restore from Checkpoint
+### 4. Restore From Checkpoint
 
 ```bash
 sudo ./checkpoint-lite restore a1b2c3d4e5f6g7h8 checkpoint-name
 ```
 
-### 5. List Available Checkpoints
+### 5. Execute Shell Commands Directly In The Managed Environment
+
+```bash
+sudo ./checkpoint-lite exec a1b2c3d4e5f6g7h8 cat hello_world.txt
+````
+
+If the `--sandbox` option was used during initialization, the command will be executed within the sandboxed environment.
+Otherwise, it will be executed directly in the managed workspace.
+
+### 6. List Available Checkpoints
 
 ```bash
 sudo ./checkpoint-lite list a1b2c3d4e5f6g7h8
 ```
 
-### 6. Clean Up Session
+### 7. Clean Up Session
 
 ```bash
 sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
 ```
 If this basic version of the cleanup command fails, our **checkpoint-lite** will automatically instruct you on 
 further actions. Namely, you can use:
-- ~~`--interactive` to get more information~~ (Since v0.2.0, this is the default behavior)
 - `--force` to forcefully remove and unmount all the related resources.
 
 ## Example Workflow 🧩
@@ -217,30 +248,27 @@ sudo ./checkpoint-lite cleanup abc123def456
 ## Directory Structure 🗃
 
 ```
-/tmp/
- ├── checkpoint-sessions/
- │   	├── a1b2c3d4e5f6g7h8/            # App A's session
- │   	│  	├── overlays/
- │   	│  	│ 	├── current/
- │   	│  	│ 	│   ├── upper/      # Overlay upper directory
- │   	│  	│ 	│   └── work/       # Overlay work directory
- │   	│  	│ 	└── ckpt-1/         # Checkpoint ckpt-1
- │   	│  	│ 	    ├── upper/          # Filesystem state
- │   	│  	│ 	    └── work/           # Work directory
- │   	│  	├── criu/
- │   	│  	│ 	└── ckpt-1/         # Checkpoint ckpt-1
- │   	│  	│ 	    └── *.img           # CRIU image files
- │   	│  	├── metadata/               # Checkpoint metadata
- │   	│  	│ 	└── ckpt-1.json         # "Metadata" for ckpt-1
- │   	│  	└── work/                   # App A works here
- │   	└── x9y8z7w6v5u4t3s2/           # App B's session
- │       	├── overlays/
- │       	├── criu/
- │       	├── metadata/
- │       	└── work/
- └── checkpoint-sessions-info/          # Global session registry
-		├── a1b2c3d4e5f6g7h8.json   # "SessionInfo" for App A
-		└── x9y8z7w6v5u4t3s2.json   # "SessionInfo" for App B
+/custom/path/checkpoint-sessions/   # Configured sessions directory
+    ├── a1b2c3d4e5f6g7h8/           # App A's session
+    │   ├── current/                # Current OverlayFS mounts
+    │   │   ├── upper/              # Overlay upper directory
+    │   │   └── work/               # Overlay work directory
+    │   ├── ckpt-1/                 # Checkpoint ckpt-1
+    │   │   ├── upper/
+    │   │   └── criu/               # CRIU image files
+    │   │       └── *.img
+    │   ├── metadata/               # Checkpoint metadata
+    │   │   └── ckpt-1.json         # "Metadata" for ckpt-1
+    │   └── work/                   # App A works here (Overlay merged view)
+    └── x9y8z7w6v5u4t3s2/           # App B's session
+     	├── current/
+    	├── ckpt-a/
+     	├── metadata/
+      	└── work/
+  
+ /tmp/checkpoint-sessions-info/     # Global session registry
+    ├── a1b2c3d4e5f6g7h8.json       # "SessionInfo" for App A
+    └── x9y8z7w6v5u4t3s2.json       # "SessionInfo" for App B
 ```
 
 ## Technical Details ⌨️
@@ -249,20 +277,20 @@ sudo ./checkpoint-lite cleanup abc123def456
 
 - **Lower Layer**: Original workspace (read-only)
 - **Upper Layer**: Application changes (copy-on-write)
-- **Work Layer** (`~/overlays/*/work/`): Temporary storage for OverlayFS internal operations
+- **Work Layer** (`~/current/work/`): Temporary storage for OverlayFS internal operations
 - **Merges** (`~/work/`): Combines upper and lower layers for the application to see
 
 ### Checkpoint Snapshot
-- **OverlayFS Checkpoint**: Copies of both upper and work layers at checkpoint time
 - **CRIU Checkpoint**: Dumps process memory, file descriptors, and execution state
-
-Those operations are performed in parallel using goroutines to reduce the time taken for checkpoint creation.
+- **OverlayFS Checkpoint**: Archives current upper and work layers to be immutable snapshots
+- **OverlayFS Recreation**: Creates new upper and work layers for continued application execution
+- **CRIU Resume**: Continues process execution with new OverlayFS mounts
+- **Metadata Management**: Stores checkpoint metadata for tracking and restoration
 
 ### Restoration
-- **OverlayFS Restore**: Replaces the current upper and work layers with checkpoint snapshots, and re-mounts the OverlayFS
-- **CRIU Restore**: Recreates process memory and execution state from checkpoint images
-
-For the robust performance, the restoration is done in sequential order, first restoring the OverlayFS state and then the memory state.
+- **Clean Slate**: Stops the current process and unmounts the existing OverlayFS
+- **OverlayFS Restoration**: Restores upper and work layers from the selected checkpoint snapshot
+- **CRIU Restore**: Restores process memory and execution state from the checkpoint
 
 ### Session Isolation
 
