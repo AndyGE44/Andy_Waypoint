@@ -194,12 +194,17 @@ func (m *Manager) removeDirectoryWithRetry() error {
 
 // buildOverlayLayers builds the list of overlay lower directories
 // from the original directory and parent checkpoints' upper layers
-// note: parentList is ordered from oldest to newest; the order matters!
+// note: parentList is ordered from oldest to newest
+// OverlayFS lowerdir priority: leftmost = highest priority
+// So we want: [newest_ckpt, ..., oldest_ckpt, original]
 func (m *Manager) buildOverlayLayers(parentList []string) []string {
-	lowerDirs := []string{m.originalDir}
-	for _, parentID := range parentList {
-		parentOverlay := filepath.Join(m.baseDir, parentID, "upper")
+	// Start with checkpoint layers in REVERSE order (newest first = highest priority)
+	var lowerDirs []string
+	for i := len(parentList) - 1; i >= 0; i-- {
+		parentOverlay := filepath.Join(m.baseDir, parentList[i], "upper")
 		lowerDirs = append(lowerDirs, parentOverlay)
 	}
+	// Original goes last (lowest priority)
+	lowerDirs = append(lowerDirs, m.originalDir)
 	return lowerDirs
 }
