@@ -1,6 +1,8 @@
 package main
 
 // checkpoint-lite: A lightweight process checkpointing and restoration tool
+//
+// GitHub Repository: https://github.com/Alex-XJK/checkpoint-lite.git
 // Developed by Alex Xu, DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
 
 import (
