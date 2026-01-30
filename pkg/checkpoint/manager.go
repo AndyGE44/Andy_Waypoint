@@ -31,15 +31,8 @@ func NewManager(baseDir string) *Manager {
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
 func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
-	if m.sandboxMode {
-		// Use sandbox isolation - pass originalDir so commands start there
-		return ExecuteInSandbox(m.workOverlay, m.originalDir, command, args...)
-	} else {
-		// Execute directly in work overlay (which contains the original directory's content)
-		cmd := exec.Command(command, args...)
-		cmd.Dir = m.workOverlay
-		return cmd, nil
-	}
+	// TODO: Implement using new bash_exec
+	return nil, fmt.Errorf("ExecuteCommand not implemented yet")
 }
 
 // CreateCheckpoint creates both the filesystem and the memory checkpoint

@@ -45,26 +45,18 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 
 	var cmd *exec.Cmd
 
-	// Check if sandboxing is enabled
-	if m.sandboxMode {
-		cmd, err = RestoreInSandbox(criuPath, m.workOverlay, nil)
-		if err != nil {
-			return -1, fmt.Errorf("failed to setup sandbox for restore: %w", err)
-		}
-	} else {
-		// Default behavior: no sandboxing
-		criuCmd := fmt.Sprintf(
-			"criu restore --images-dir '%s' --shell-job --tcp-established",
-			criuPath,
-		)
+	// Default behavior: no sandboxing
+	criuCmd := fmt.Sprintf(
+		"criu restore --images-dir '%s' --shell-job --tcp-established",
+		criuPath,
+	)
 
-		cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{
-				Uid: 0,
-				Gid: 0,
-			},
-		}
+	cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Uid: 0,
+			Gid: 0,
+		},
 	}
 
 	if err := cmd.Start(); err != nil {
