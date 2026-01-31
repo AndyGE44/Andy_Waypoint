@@ -21,6 +21,7 @@ func main() {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
+		fmt.Println("  build <dockerfile-directory>                 - Build sandbox image")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
@@ -82,6 +83,31 @@ func main() {
 			}
 			fmt.Printf("\nSave the session ID for future operations!\n")
 		}
+
+	case "build":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: build <dockerfile-directory>")
+			os.Exit(1)
+		}
+		dockerfileDir := os.Args[2]
+
+		// Create a new manager with a random session
+		manager, sessionID, err := checkpoint.NewManagerWithSession(true)
+		if err != nil {
+			fmt.Printf("Error creating session: %v\n", err)
+			os.Exit(1)
+		}
+
+		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir)
+		if err != nil {
+			fmt.Printf("Error building sandbox image: %v\n", err)
+		}
+
+		fmt.Printf("Sandbox environment built successfully!\n")
+		fmt.Printf("Session ID: %s\n", sessionID)
+		fmt.Printf("Work in this directory: %s\n", overlayPath)
+		fmt.Printf("Sandbox bash PID: %d\n", bashPid)
+		fmt.Printf("\nSave the session ID for future operations!\n")
 
 	case "create":
 		if len(os.Args) != 5 {
