@@ -29,7 +29,7 @@ func execCommand(socketPath, command string) (string, error) {
 	}
 	writer.Flush()
 
-	// Read all output until connection closes
+	// Read all output until the connection closes
 	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	output, err := io.ReadAll(conn)
 	if err != nil && err != io.EOF {

@@ -8,7 +8,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
@@ -172,26 +171,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		cmd, err := manager.ExecuteCommand(command, args...)
+		output, err := manager.ExecuteCommand(command, args...)
 		if err != nil {
-			fmt.Printf("Error preparing command: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Connect stdin, stdout, stderr
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// Run the command
-		if err := cmd.Run(); err != nil {
-			// Exit with the same code as the command
-			if exitError, ok := err.(*exec.ExitError); ok {
-				os.Exit(exitError.ExitCode())
-			}
 			fmt.Printf("Error executing command: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Print(output)
 
 	case "list":
 		if len(os.Args) != 3 {

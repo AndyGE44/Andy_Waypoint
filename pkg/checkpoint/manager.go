@@ -30,9 +30,14 @@ func NewManager(baseDir string) *Manager {
 // ExecuteCommand executes a command in the checkpoint environment.
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
-func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
-	// TODO: Implement using new bash_exec
-	return nil, fmt.Errorf("ExecuteCommand not implemented yet")
+func (m *Manager) ExecuteCommand(command string, args ...string) (string, error) {
+	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID)) // TODO: Use stored socket path
+	commandString := command + " " + strings.Join(args, " ")
+	output, err := execCommand(socketPath, commandString)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute command: %w", err)
+	}
+	return output, nil
 }
 
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
