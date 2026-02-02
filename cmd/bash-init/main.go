@@ -30,14 +30,22 @@ var (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: bash-init <socket-path>")
-		fmt.Println("Example: bash-init /tmp/bash_cmd.sock")
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: bash_init <socket-path> <chroot-dir>")
+		fmt.Println("Example: bash_init /tmp/bash_cmd.sock /checkpoint-sessions/xyz/work")
 		os.Exit(1)
 	}
 
 	socketPath := os.Args[1]
+	chrootDir := os.Args[2]
 
+	// Ensure chroot directory exists
+	if _, err := os.Stat(chrootDir); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Chroot directory does not exist: %s\n", chrootDir)
+		os.Exit(1)
+	}
+
+	// Create PTY
 	ptyMaster, ptySlave, err := pty.Open()
 	if err != nil {
 		panic(err)
@@ -58,7 +66,10 @@ func main() {
 		"--norc",
 		"--noprofile",
 	)
-
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Chroot: chrootDir,
+	}
+	cmd.Dir = "/"
 	cmd.Stdin = ptySlave
 	cmd.Stdout = ptySlave
 	cmd.Stderr = ptySlave
