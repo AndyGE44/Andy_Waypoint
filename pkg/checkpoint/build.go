@@ -17,6 +17,7 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string) error {
 	imageTag := fmt.Sprintf("ckptlite_%s:%d", filepath.Base(dockerfileDir), time.Now().Unix())
 
 	run := func(cmd *exec.Cmd, capture bool) (string, error) {
+		fmt.Println("Running >> ", strings.Join(cmd.Args, " ")) // Debug print
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 		if capture {
@@ -91,43 +92,26 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string) error {
 	return nil
 }
 
-// bindMount performs a bind mount
-func bindMount(source, target string) error {
-	flags := syscall.MS_BIND
-	return syscall.Mount(source, target, "", uintptr(flags), "")
-}
+func (m *Manager) mountSpecialFS() error {
+	mergedDir := m.workOverlay
 
-// mountDevPts mounts devpts inside the environment
-func mountDevPts(originalDir string) error {
-	target := fmt.Sprintf("%s/dev/pts", originalDir)
-
-	flags := uintptr(0)
-	options := "newinstance,ptmxmode=0666"
-
-	if err := syscall.Mount("devpts", target, "devpts", flags, options); err != nil {
-		return fmt.Errorf("failed to mount devpts: %w", err)
+	mntDirs := []struct {
+		src    string
+		dst    string
+		fstype string
+		flags  uintptr
+		data   string
+	}{
+		{"/dev", filepath.Join(mergedDir, "dev"), "", syscall.MS_BIND | syscall.MS_REC, ""},
+		{"devpts", filepath.Join(mergedDir, "dev/pts"), "devpts", 0, "newinstance,ptmxmode=0666"},
+		{"/tmp", filepath.Join(mergedDir, "tmp"), "", syscall.MS_BIND | syscall.MS_REC, ""},
 	}
 
-	return nil
-}
-
-func MountNecessary(originalDir string) error {
-	// Bind mount /dev for PTY management
-	devTarget := fmt.Sprintf("%s/dev", originalDir)
-	if err := bindMount("/dev", devTarget); err != nil {
-		return fmt.Errorf("failed to bind mount /dev: %w", err)
-	}
-
-	// Mount devpts for PTYs
-	if err := mountDevPts(originalDir); err != nil {
-		return fmt.Errorf("failed to mount devpts: %w", err)
-	}
-
-	// Mount /tmp for socket sharing
-	// TODO: maybe sub-dir of /tmp for security?
-	tmpTarget := fmt.Sprintf("%s/tmp", originalDir)
-	if err := bindMount("/tmp", tmpTarget); err != nil {
-		return fmt.Errorf("failed to bind mount /tmp: %w", err)
+	for _, mnt := range mntDirs {
+		os.MkdirAll(mnt.dst, 0755)
+		if err := syscall.Mount(mnt.src, mnt.dst, mnt.fstype, mnt.flags, mnt.data); err != nil {
+			return fmt.Errorf("mount %s failed: %w", mnt.dst, err)
+		}
 	}
 
 	return nil
@@ -152,12 +136,6 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 
 	m.originalDir = originalDir
 
-	// Mount necessary filesystems
-	mountErr := MountNecessary(originalDir)
-	if mountErr != nil {
-		return "", 0, fmt.Errorf("failed to mount necessary filesystems: %w", mountErr)
-	}
-
 	// Copy bash_init binary into the environment root for later chroot execs
 	bashInitSrc := "./bash_init" // TODO: Read from config or embed
 	bashInitDst := filepath.Join(originalDir, "bash_init")
@@ -177,6 +155,11 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 		return "", 0, fmt.Errorf("failed to initialize overlay environment: %w", overlayErr)
 	}
 
+	// Mount special filesystems inside the overlay
+	if mountErr := m.mountSpecialFS(); mountErr != nil {
+		return "", 0, fmt.Errorf("failed to mount special filesystems: %w", mountErr)
+	}
+
 	// Launch bash_init with chroot in background to set up the environment
 	// TODO: Save PID and socketPath for later use
 	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID))
@@ -184,6 +167,8 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session = no controlling TTY
 	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return "", 0, fmt.Errorf("failed to start bash_init in chroot: %w", err)
 	}
