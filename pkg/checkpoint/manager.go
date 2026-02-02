@@ -68,9 +68,6 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		}
 	}
 
-	// Unmount special filesystems from the overlay
-	m.unmountSpecialFS()
-
 	// Unmount current overlay to ensure filesystem consistency
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -99,11 +96,6 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	err := m.mountOverlay(lowerDirs, upperDir, workDir, m.workOverlay)
 	if err != nil {
 		return fmt.Errorf("failed to remount new current overlay: %w", err)
-	}
-
-	// Mount special filesystems again
-	if err := m.mountSpecialFS(); err != nil {
-		return fmt.Errorf("failed to remount special filesystems: %w", err)
 	}
 
 	// Restore the memory state into the new overlay

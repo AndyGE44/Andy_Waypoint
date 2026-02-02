@@ -150,17 +150,6 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 
 	m.originalDir = originalDir
 
-	// Copy bash_init binary into the environment root for later chroot execs
-	bashInitSrc := "./bash_init" // TODO: Read from config or embed
-	bashInitDst := filepath.Join(originalDir, "bash_init")
-	bashData, readErr := os.ReadFile(bashInitSrc)
-	if readErr != nil {
-		return "", 0, fmt.Errorf("failed to read bash_init binary: %w", readErr)
-	}
-	if writeErr := os.WriteFile(bashInitDst, bashData, 0755); writeErr != nil {
-		return "", 0, fmt.Errorf("failed to write bash_init binary: %w", writeErr)
-	}
-
 	// Now that we have a built environment ready.
 
 	// Initialize overlay environment on top of it
@@ -169,15 +158,11 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 		return "", 0, fmt.Errorf("failed to initialize overlay environment: %w", overlayErr)
 	}
 
-	// Mount special filesystems inside the overlay
-	if mountErr := m.mountSpecialFS(); mountErr != nil {
-		return "", 0, fmt.Errorf("failed to mount special filesystems: %w", mountErr)
-	}
-
-	// Launch bash_init with chroot in background to set up the environment
-	// TODO: Save PID and socketPath for later use
+	// Launch new chroot-embeded bash_init in background to set up the environment
+	bashInitSrc := "./bash_init" // TODO: Read from config
 	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID))
-	cmd := exec.Command("chroot", workDir, "./bash_init", socketPath)
+	// TODO: Save PID and socketPath for later use
+	cmd := exec.Command(bashInitSrc, socketPath, workDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session = no controlling TTY
 	}
