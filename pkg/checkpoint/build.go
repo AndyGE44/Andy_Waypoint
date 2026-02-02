@@ -117,6 +117,20 @@ func (m *Manager) mountSpecialFS() error {
 	return nil
 }
 
+func (m *Manager) unmountSpecialFS() {
+	mergedDir := m.workOverlay
+	
+	mntPoints := []string{
+		filepath.Join(mergedDir, "dev/pts"),
+		filepath.Join(mergedDir, "dev"),
+		filepath.Join(mergedDir, "tmp"),
+	}
+	
+	for _, mnt := range mntPoints {
+		syscall.Unmount(mnt, 0)
+	}
+}
+
 func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 	originalDir := filepath.Join(m.baseDir, "original")
 
