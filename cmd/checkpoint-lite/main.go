@@ -13,7 +13,7 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.4.0"
+var Version = "v0.5.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -176,7 +176,7 @@ func main() {
 			fmt.Printf("Error executing command: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Print(output)
+		fmt.Println(output)
 
 	case "list":
 		if len(os.Args) != 3 {

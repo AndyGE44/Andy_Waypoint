@@ -32,7 +32,7 @@ func NewManager(baseDir string) *Manager {
 // Otherwise, it runs directly in the work overlay directory.
 func (m *Manager) ExecuteCommand(command string, args ...string) (string, error) {
 	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID)) // TODO: Use stored socket path
-	commandString := command + " " + strings.Join(args, " ")
+	commandString := command + " " + strings.Join(args, " ") + "\n"
 	output, err := execCommand(socketPath, commandString)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command: %w", err)

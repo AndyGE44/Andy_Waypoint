@@ -102,9 +102,9 @@ func (m *Manager) mountSpecialFS() error {
 		flags  uintptr
 		data   string
 	}{
-		{"/dev", filepath.Join(mergedDir, "dev"), "", syscall.MS_BIND | syscall.MS_REC, ""},
+		{"/dev", filepath.Join(mergedDir, "dev"), "", syscall.MS_BIND, ""},
 		{"devpts", filepath.Join(mergedDir, "dev/pts"), "devpts", 0, "newinstance,ptmxmode=0666"},
-		{"/tmp", filepath.Join(mergedDir, "tmp"), "", syscall.MS_BIND | syscall.MS_REC, ""},
+		{"/tmp", filepath.Join(mergedDir, "tmp"), "", syscall.MS_BIND, ""},
 	}
 
 	for _, mnt := range mntDirs {
@@ -167,7 +167,7 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session = no controlling TTY
 	}
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = nil
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return "", 0, fmt.Errorf("failed to start bash_init in chroot: %w", err)
