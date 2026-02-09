@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
@@ -68,6 +67,7 @@ func main() {
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: chrootDir,
+		Setsid:     true,
 	}
 	cmd.Dir = "/"
 	cmd.Stdin = ptySlave
@@ -91,24 +91,22 @@ func main() {
 	go drainPTY(ptyMaster, outputBuffer)
 
 	// Handle command connections
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-
-			go handleClient(conn, ptyMaster, &ptyMutex, outputBuffer)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
 		}
-	}()
 
-	// Wait for termination signal
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+		go handleClient(conn, ptyMaster, &ptyMutex, outputBuffer)
+	}
 
-	ptySlave.Close()
-	ptyMaster.Close()
+	// // Wait for termination signal
+	// sig := make(chan os.Signal, 1)
+	// signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	// <-sig
+
+	// ptySlave.Close()
+	// ptyMaster.Close()
 }
 
 // syncBuffer is a thread-safe buffer

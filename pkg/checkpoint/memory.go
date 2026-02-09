@@ -14,8 +14,7 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	cmd := exec.Command("criu", "dump",
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
-		"--shell-job",
-		"--tcp-established") // Include TCP connections
+		"--shell-job")
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -47,7 +46,7 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 
 	// Default behavior: no sandboxing
 	criuCmd := fmt.Sprintf(
-		"criu restore --images-dir '%s' --shell-job --tcp-established",
+		"criu restore --images-dir '%s' --shell-job",
 		criuPath,
 	)
 
