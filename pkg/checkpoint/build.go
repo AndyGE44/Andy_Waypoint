@@ -13,15 +13,16 @@ import (
 	"time"
 )
 
-func BuildFromDockerfile(dockerfileDir, workspaceDir string) error {
+func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 	imageTag := fmt.Sprintf("ckptlite_%s:%d", filepath.Base(dockerfileDir), time.Now().Unix())
 
 	run := func(cmd *exec.Cmd, capture bool) (string, error) {
-		fmt.Println("Running >> ", strings.Join(cmd.Args, " ")) // Debug print
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
 		if capture {
 			cmd.Stdout = &stdout
+		} else if quiet {
+			cmd.Stdout = nil
 		} else {
 			cmd.Stdout = os.Stdout
 		}
@@ -92,46 +93,57 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string) error {
 	return nil
 }
 
-func (m *Manager) mountSpecialFS() error {
-	mergedDir := m.workOverlay
+// StartShell launches a new chroot-embedded bash_init process at the given workDir.
+// On success, it updates the session info with the shell PID and socket path for later use.
+func (m *Manager) StartShell(workDir string) (int, string, error) {
+	bashInitSrc := "./bash_init"                                                      // TODO: Read from config
+	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID)) // TODO: Unify working files
 
-	mntDirs := []struct {
-		src    string
-		dst    string
-		fstype string
-		flags  uintptr
-		data   string
-	}{
-		{"/dev", filepath.Join(mergedDir, "dev"), "", syscall.MS_BIND, ""},
-		{"devpts", filepath.Join(mergedDir, "dev/pts"), "devpts", 0, "newinstance,ptmxmode=0666"},
-		{"/tmp", filepath.Join(mergedDir, "tmp"), "", syscall.MS_BIND, ""},
+	// Judge /bin/bash pre-requisite for bash_init
+	bashPath := filepath.Join(workDir, "bin/bash")
+	if _, err := os.Stat(bashPath); os.IsNotExist(err) {
+		return ShellNotEnabled, "", fmt.Errorf("bash pre-requisite not met: %s does not exist", bashPath)
 	}
 
-	for _, mnt := range mntDirs {
-		os.MkdirAll(mnt.dst, 0755)
-		if err := syscall.Mount(mnt.src, mnt.dst, mnt.fstype, mnt.flags, mnt.data); err != nil {
-			return fmt.Errorf("mount %s failed: %w", mnt.dst, err)
-		}
+	cmd := exec.Command(bashInitSrc, socketPath, workDir)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true, // new session = no controlling TTY
 	}
 
-	return nil
+	// stdin -> /dev/null
+	devNull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
+	if err != nil {
+		return ShellNotEnabled, "", fmt.Errorf("failed to open /dev/null: %w", err)
+	}
+	cmd.Stdin = devNull
+
+	// stdout/stderr -> log file
+	logPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.log", m.sessionID)) // TODO: Unify working files
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return ShellNotEnabled, "", fmt.Errorf("failed to open log file: %w", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	// Start the bash_init process in the background
+	if err := cmd.Start(); err != nil {
+		return ShellNotEnabled, "", fmt.Errorf("failed to start bash_init: %w", err)
+	}
+
+	// Update shell PID and socket path in session info
+	m.shellPid = cmd.Process.Pid
+	m.shellSocket = socketPath
+
+	// Save updated session info
+	if err := saveSessionInfo(m.sessionID, m); err != nil {
+		return m.shellPid, m.shellSocket, fmt.Errorf("failed to save session info: %w", err)
+	}
+
+	return m.shellPid, m.shellSocket, nil
 }
 
-func (m *Manager) unmountSpecialFS() {
-	mergedDir := m.workOverlay
-	
-	mntPoints := []string{
-		filepath.Join(mergedDir, "dev/pts"),
-		filepath.Join(mergedDir, "dev"),
-		filepath.Join(mergedDir, "tmp"),
-	}
-	
-	for _, mnt := range mntPoints {
-		syscall.Unmount(mnt, 0)
-	}
-}
-
-func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
+func (m *Manager) BuildEnvironment(dockerfileDir string, quiet bool) (string, int, error) {
 	originalDir := filepath.Join(m.baseDir, "original")
 
 	// Ensure originalDir is clean
@@ -143,14 +155,13 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 	}
 
 	// Build from Dockerfile to create a virtual system environment
-	buildahErr := BuildFromDockerfile(dockerfileDir, originalDir)
+	buildahErr := BuildFromDockerfile(dockerfileDir, originalDir, quiet)
 	if buildahErr != nil {
 		return "", 0, fmt.Errorf("failed to build from Dockerfile: %w", buildahErr)
 	}
 
-	m.originalDir = originalDir
-
 	// Now that we have a built environment ready.
+	m.originalDir = originalDir
 
 	// Initialize overlay environment on top of it
 	workDir, overlayErr := m.InitEnvironment(originalDir)
@@ -158,40 +169,16 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 		return "", 0, fmt.Errorf("failed to initialize overlay environment: %w", overlayErr)
 	}
 
-	// Launch new chroot-embeded bash_init in background to set up the environment
-	bashInitSrc := "./bash_init" // TODO: Read from config
-	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID))
-
-	// TODO: Save PID and socketPath for later use
-	cmd := exec.Command(bashInitSrc, socketPath, workDir)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // new session = no controlling TTY
+	// Launch new chroot-embedded bash_init in background to set up the environment
+	pid := ShellNotEnabled
+	if pid, _, err := m.StartShell(workDir); err != nil {
+		return workDir, pid, fmt.Errorf("failed to start shell in environment: %w", err)
 	}
 
-	// stdin -> /dev/null
-	devNull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
-	if err != nil {
-		return "", 0, fmt.Errorf("failed to open /dev/null: %w", err)
-	}
-	cmd.Stdin = devNull
-
-	// stdout/stderr -> log file
-	logPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.log", m.sessionID))
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return "", 0, fmt.Errorf("failed to open log file: %w", err)
-	}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	
-	if err := cmd.Start(); err != nil {
-		return "", 0, fmt.Errorf("failed to start bash_init in chroot: %w", err)
-	}
-
-	// Update session info with originalDir and workOverlay
+	// Update session info with originalDir, workOverlay, shell PID, and socket path
 	if err := updateSessionEnvironment(m.sessionID, m.originalDir, m.workOverlay); err != nil {
-		return "", 0, fmt.Errorf("failed to update session info: %w", err)
+		return workDir, pid, fmt.Errorf("failed to update session info: %w", err)
 	}
 
-	return workDir, cmd.Process.Pid, nil
+	return workDir, pid, nil
 }

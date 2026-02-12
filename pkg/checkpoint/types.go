@@ -15,7 +15,8 @@ type Manager struct {
 	workOverlay   string   // Current working overlay mount point, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
 	originalDir   string   // Original directory being managed, e.g., /home/user/app-data
 	sessionID     string   // Unique session identifier, e.g., a1b2c3d4e5f6g7h8
-	sandboxMode   bool     // Sandbox isolation enabled
+	shellPid      int      // PID of the shell process if a shell is enabled, 0 otherwise
+	shellSocket   string   // Path to the shell socket if enabled, empty otherwise
 	currentParent []string // Current parent checkpoints
 }
 
@@ -37,12 +38,14 @@ type SessionInfo struct {
 	BaseDir       string   `json:"base_dir"`
 	OriginalDir   string   `json:"original_dir"`
 	WorkOverlay   string   `json:"work_overlay"`
-	SandboxMode   bool     `json:"sandbox_mode"`
 	CreatedAt     int64    `json:"created_at"`
 	CurrentParent []string `json:"current_parent"`
+	ShellPid      int      `json:"shell_pid"`
+	ShellSocket   string   `json:"shell_socket,omitempty"`
 }
 
 const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint
+const ShellNotEnabled = 0       // Shell is not enabled for this session
 const SessionInfoDir = "/tmp/checkpoint-sessions-info"
 
 // The below section handles configuration loading.

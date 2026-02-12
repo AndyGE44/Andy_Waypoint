@@ -19,8 +19,8 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
-		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
-		fmt.Println("  build <dockerfile-directory>                 - Build sandbox image")
+		fmt.Println("  init <work-directory> [--quiet] [--shell]    - Initialize environment")
+		fmt.Println("  build <dockerfile-directory> [--quiet]       - Build environment from Dockerfile")
 		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
@@ -35,23 +35,23 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: init <work-directory> [--quiet] [--sandbox]")
-			fmt.Println("  --sandbox: Enable lightweight sandbox isolation (default: disabled)")
+			fmt.Println("Usage: init <work-directory> [--quiet] [--shell]")
+			fmt.Println("  --shell: Start a shell in the initialized environment after setup")
 			os.Exit(1)
 		}
 		workDir := os.Args[2]
 
 		// Parse flags
 		quiet := false
-		sandboxMode := false
+		shell := false
 
 		for i := 3; i < len(os.Args); i++ {
 			arg := os.Args[i]
 			switch arg {
 			case "--quiet":
 				quiet = true
-			case "--sandbox":
-				sandboxMode = true
+			case "--shell":
+				shell = true
 			default:
 				fmt.Printf("Error: unknown flag: %s\n", arg)
 				os.Exit(1)
@@ -59,7 +59,7 @@ func main() {
 		}
 
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession(sandboxMode)
+		manager, sessionID, err := checkpoint.NewManagerWithSession()
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
@@ -71,42 +71,70 @@ func main() {
 			os.Exit(1)
 		}
 
+		shellPid := 0
+		socketPath := ""
+		if shell {
+			shellPid, socketPath, err = manager.StartShell(overlayPath)
+			if err != nil {
+				fmt.Printf("Error starting shell: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
 		if quiet {
 			fmt.Printf("%s,%s\n", sessionID, overlayPath)
 		} else {
 			fmt.Printf("Environment initialized!\n")
 			fmt.Printf("Session ID: %s\n", sessionID)
 			fmt.Printf("Work in this directory: %s\n", overlayPath)
-			if sandboxMode {
-				fmt.Printf("Sandbox mode: enabled (light)\n")
+			if shell {
+				fmt.Printf("Shell PID: %d [socket: %s]\n", shellPid, socketPath)
 			}
 			fmt.Printf("\nSave the session ID for future operations!\n")
 		}
 
 	case "build":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: build <dockerfile-directory>")
+			fmt.Println("Usage: build <dockerfile-directory> [--quiet]")
 			os.Exit(1)
 		}
 		dockerfileDir := os.Args[2]
 
+		// Parse flags
+		quiet := false
+
+		for i := 3; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			switch arg {
+			case "--quiet":
+				quiet = true
+			default:
+				fmt.Printf("Error: unknown flag: %s\n", arg)
+				os.Exit(1)
+			}
+		}
+
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession(true)
+		manager, sessionID, err := checkpoint.NewManagerWithSession()
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
 		}
 
-		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir)
+		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir, quiet)
 		if err != nil {
 			fmt.Printf("Error building sandbox image: %v\n", err)
 		}
 
-		fmt.Printf("Sandbox environment built successfully!\n")
-		fmt.Printf("Session ID: %s\n", sessionID)
-		fmt.Printf("Work in this directory: %s\n", overlayPath)
-		fmt.Printf("Sandbox bash PID: %d\n", bashPid)
-		fmt.Printf("\nSave the session ID for future operations!\n")
+		if quiet {
+			fmt.Printf("%s,%s,%d\n", sessionID, overlayPath, bashPid)
+		} else {
+			fmt.Printf("Sandbox environment built successfully!\n")
+			fmt.Printf("Session ID: %s\n", sessionID)
+			fmt.Printf("Work in this directory: %s\n", overlayPath)
+			fmt.Printf("Sandbox bash PID: %d\n", bashPid)
+			fmt.Printf("\nSave the session ID for future operations!\n")
+		}
 
 	case "create":
 		if len(os.Args) != 5 {
