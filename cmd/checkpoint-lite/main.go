@@ -21,7 +21,7 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--shell]    - Initialize environment")
 		fmt.Println("  build <dockerfile-directory> [--quiet]       - Build environment from Dockerfile")
-		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
+		fmt.Println("  create <session> <checkpoint-id> [pid | -1]  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
 		fmt.Println("  list <session>                               - List checkpoints")
@@ -137,17 +137,24 @@ func main() {
 		}
 
 	case "create":
-		if len(os.Args) != 5 {
-			fmt.Println("Usage: create <session> <pid | -1> <checkpoint-id>")
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: create <session> <checkpoint-id> [pid | -1]")
+			fmt.Println("  If pid not provided, checkpoint the shell if enabled; otherwise, skip memory checkpoint")
+			fmt.Println("  Use -1 to force skip memory checkpoint")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]
-		pid, err := strconv.Atoi(os.Args[3])
-		if err != nil {
-			fmt.Printf("Invalid PID: %s\n", os.Args[3])
-			os.Exit(1)
+		checkpointID := os.Args[3]
+
+		pid := checkpoint.PidNotProvided
+		err := error(nil)
+		if len(os.Args) > 4 {
+			pid, err = strconv.Atoi(os.Args[4])
+			if err != nil {
+				fmt.Printf("Invalid PID: %s\n", os.Args[4])
+				os.Exit(1)
+			}
 		}
-		checkpointID := os.Args[4]
 
 		manager, err := checkpoint.LoadManager(sessionID)
 		if err != nil {
@@ -186,7 +193,7 @@ func main() {
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: exec <session> <command> [args...]")
 			fmt.Println("  Execute a command in the checkpoint environment")
-			fmt.Println("  If sandbox mode is enabled, command runs in isolated sandbox")
+			fmt.Println("  If shell enabled, command runs using the shell's sandbox; otherwise, it runs directly in the work overlay")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]

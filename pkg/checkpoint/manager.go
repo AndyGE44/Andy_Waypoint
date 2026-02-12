@@ -31,13 +31,25 @@ func NewManager(baseDir string) *Manager {
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
 func (m *Manager) ExecuteCommand(command string, args ...string) (string, error) {
-	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID)) // TODO: Use stored socket path
-	commandString := command + " " + strings.Join(args, " ") + "\n"
-	output, err := execCommand(socketPath, commandString)
-	if err != nil {
-		return "", fmt.Errorf("failed to execute command: %w", err)
+	if m.shellPid != ShellNotEnabled && m.shellSocket != "" {
+		// If shell is enabled, execute command through the shell's sandbox
+		socketPath := m.shellSocket
+		commandString := command + " " + strings.Join(args, " ") + "\n"
+		output, err := execCommand(socketPath, commandString)
+		if err != nil {
+			return "", fmt.Errorf("failed to execute command: %w", err)
+		}
+		return output, nil
 	}
-	return output, nil
+
+	// If shell is not enabled, execute command directly in the work overlay
+	cmd := exec.Command(command, args...)
+	cmd.Dir = m.workOverlay
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute command: %w\nOutput: %s", err, string(outputBytes))
+	}
+	return string(outputBytes), nil
 }
 
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
@@ -49,8 +61,18 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (string, error)
 // CreateCheckpointNew creates a new checkpoint with the given ID
 func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
+	// TODO: Check for duplication
 	if checkpointID == "" || checkpointID == "current" {
 		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+	}
+
+	// Special case for Default PID: Use Bash PID if available, otherwise skip memory checkpoint
+	if pid == PidNotProvided {
+		if m.shellPid != ShellNotEnabled {
+			pid = m.shellPid
+		} else {
+			pid = SkipMemoryCheckpoint
+		}
 	}
 
 	// Create a memory checkpoint to "~/current/criu/*.img"

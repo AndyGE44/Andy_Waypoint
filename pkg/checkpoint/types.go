@@ -44,8 +44,12 @@ type SessionInfo struct {
 	ShellSocket   string   `json:"shell_socket,omitempty"`
 }
 
+// PID values for special cases
+
 const SkipMemoryCheckpoint = -1 // User requested to skip memory checkpoint
 const ShellNotEnabled = 0       // Shell is not enabled for this session
+const PidNotProvided = -2       // PID not provided for checkpointing
+
 const SessionInfoDir = "/tmp/checkpoint-sessions-info"
 
 // The below section handles configuration loading.
