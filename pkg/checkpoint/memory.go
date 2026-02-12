@@ -5,6 +5,7 @@ package checkpoint
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -14,7 +15,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	cmd := exec.Command("criu", "dump",
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
-		"--shell-job")
+		"-vv", "-o", "dump.log",
+	)
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -44,19 +46,25 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 
 	var cmd *exec.Cmd
 
-	// Default behavior: no sandboxing
-	criuCmd := fmt.Sprintf(
-		"criu restore --images-dir '%s' --shell-job",
-		criuPath,
-	)
+	// // Default behavior: no sandboxing
+	// criuCmd := fmt.Sprintf(
+	// 	"criu restore --images-dir '%s' --shell-job",
+	// 	criuPath,
+	// )
 
-	cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
+	// cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
+	cmd = exec.Command(
+		"criu", "restore",
+		"--images-dir", criuPath,
+		"-vv", "-o", "restore.log",
+	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid: 0,
-			Gid: 0,
-		},
+		Setsid: true,
 	}
+	devNull, _ := os.OpenFile("/dev/null", os.O_RDWR, 0)
+	cmd.Stdin = devNull
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
 
 	if err := cmd.Start(); err != nil {
 		return -1, fmt.Errorf("failed to restore memory state: %w", err)

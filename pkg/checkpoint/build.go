@@ -161,13 +161,29 @@ func (m *Manager) BuildEnvironment(dockerfileDir string) (string, int, error) {
 	// Launch new chroot-embeded bash_init in background to set up the environment
 	bashInitSrc := "./bash_init" // TODO: Read from config
 	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID))
+
 	// TODO: Save PID and socketPath for later use
 	cmd := exec.Command(bashInitSrc, socketPath, workDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session = no controlling TTY
 	}
-	cmd.Stdout = nil
-	cmd.Stderr = os.Stderr
+
+	// stdin -> /dev/null
+	devNull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open /dev/null: %w", err)
+	}
+	cmd.Stdin = devNull
+
+	// stdout/stderr -> log file
+	logPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.log", m.sessionID))
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open log file: %w", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	
 	if err := cmd.Start(); err != nil {
 		return "", 0, fmt.Errorf("failed to start bash_init in chroot: %w", err)
 	}
