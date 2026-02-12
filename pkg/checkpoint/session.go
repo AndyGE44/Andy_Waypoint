@@ -47,7 +47,8 @@ func LoadManager(sessionID string) (*Manager, error) {
 	manager.sessionID = sessionID
 	manager.originalDir = sessionInfo.OriginalDir
 	manager.workOverlay = sessionInfo.WorkOverlay
-	manager.shellEnabled = sessionInfo.SandboxMode
+	manager.shellPid = sessionInfo.ShellPid
+	manager.shellSocket = sessionInfo.ShellSocket
 	manager.currentParent = sessionInfo.CurrentParent
 
 	return manager, nil

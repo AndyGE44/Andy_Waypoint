@@ -12,6 +12,7 @@ import (
 
 func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	// Use CRIU to dump the process
+	// Notice: Cannot use '--shell-job' because the PTY issue during the restore phase.
 	cmd := exec.Command("criu", "dump",
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
@@ -44,16 +45,9 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		return -1, fmt.Errorf("failed to kill original process %d: %w", pid, err)
 	}
 
-	var cmd *exec.Cmd
-
-	// // Default behavior: no sandboxing
-	// criuCmd := fmt.Sprintf(
-	// 	"criu restore --images-dir '%s' --shell-job",
-	// 	criuPath,
-	// )
-
-	// cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
-	cmd = exec.Command(
+	// Use CRIU to restore the process
+	// Notice: Cannot use '--shell-job' because it will try to attach to the original PTY, which does not exist anymore.
+	cmd := exec.Command(
 		"criu", "restore",
 		"--images-dir", criuPath,
 		"-vv", "-o", "restore.log",

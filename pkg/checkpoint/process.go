@@ -68,23 +68,29 @@ func (m *Manager) killProcessesUsingDirectory() error {
 
 	fmt.Printf("Found %d processes using directory, attempting to terminate...\n", len(pids))
 
-	// Try SIGTERM first
+	// Concurrently attempt to kill all processes
+	totalProcCount := len(pids)
+	errProcCount := 0
+	errorChan := make(chan error, totalProcCount)
 	for _, pid := range pids {
-		if err := m.killProcess(pid); err != nil {
-			fmt.Printf("Warning: Failed to kill process %d: %v\n", pid, err)
+		go func(pid int) {
+			if err := m.killProcess(pid); err != nil {
+				errorChan <- fmt.Errorf("failed to kill process %d: %w", pid, err)
+			} else {
+				errorChan <- nil
+			}
+		}(pid)
+	}
+
+	// Wait for all kill attempts to finish
+	for i := 0; i < totalProcCount; i++ {
+		if err := <-errorChan; err != nil {
+			errProcCount++
 		}
 	}
 
-	// Wait a moment for processes to terminate
-	time.Sleep(2 * time.Second)
-
-	// Check if any processes are still alive and force kill them
-	remainingPids, _ := m.findProcessesUsingDirectory()
-	for _, pid := range remainingPids {
-		process, err := os.FindProcess(pid)
-		if err == nil {
-			process.Signal(syscall.SIGKILL)
-		}
+	if errProcCount > 0 {
+		return fmt.Errorf("failed to kill %d out of %d processes using directory", errProcCount, totalProcCount)
 	}
 
 	return nil
