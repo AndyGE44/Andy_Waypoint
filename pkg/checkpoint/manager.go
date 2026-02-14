@@ -151,6 +151,13 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
+	// If the previous checkpoint contains process, we need to first kill it, so that mountpoint can be released.
+	if checkpointMetadata.PID != SkipMemoryCheckpoint {
+		if err := m.killProcess(checkpointMetadata.PID); err != nil {
+			return 0, fmt.Errorf("failed to kill original process %d: %w", checkpointMetadata.PID, err)
+		}
+	}
+
 	// Unmount current overlay for future remount
 	exec.Command("umount", m.workOverlay).Run()
 

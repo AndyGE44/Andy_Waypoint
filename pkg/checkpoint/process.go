@@ -77,6 +77,7 @@ func (m *Manager) killProcessesUsingDirectory() error {
 			if err := m.killProcess(pid); err != nil {
 				errorChan <- fmt.Errorf("failed to kill process %d: %w", pid, err)
 			} else {
+				fmt.Printf("Successfully killed process %d\n", pid)
 				errorChan <- nil
 			}
 		}(pid)

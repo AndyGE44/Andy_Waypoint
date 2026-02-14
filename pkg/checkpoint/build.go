@@ -170,8 +170,8 @@ func (m *Manager) BuildEnvironment(dockerfileDir string, quiet bool) (string, in
 	}
 
 	// Launch new chroot-embedded bash_init in background to set up the environment
-	pid := ShellNotEnabled
-	if pid, _, err := m.StartShell(workDir); err != nil {
+	pid, _, err := m.StartShell(workDir)
+	if err != nil {
 		return workDir, pid, fmt.Errorf("failed to start shell in environment: %w", err)
 	}
 
