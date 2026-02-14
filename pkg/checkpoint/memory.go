@@ -5,17 +5,19 @@ package checkpoint
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 )
 
 func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	// Use CRIU to dump the process
+	// Notice: Cannot use '--shell-job' because the PTY issue during the restore phase.
 	cmd := exec.Command("criu", "dump",
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
-		"--shell-job",
-		"--tcp-established") // Include TCP connections
+		"-vv", "-o", "dump.log",
+	)
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -43,29 +45,20 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		return -1, fmt.Errorf("failed to kill original process %d: %w", pid, err)
 	}
 
-	var cmd *exec.Cmd
-
-	// Check if sandboxing is enabled
-	if m.sandboxMode {
-		cmd, err = RestoreInSandbox(criuPath, m.workOverlay, nil)
-		if err != nil {
-			return -1, fmt.Errorf("failed to setup sandbox for restore: %w", err)
-		}
-	} else {
-		// Default behavior: no sandboxing
-		criuCmd := fmt.Sprintf(
-			"criu restore --images-dir '%s' --shell-job --tcp-established",
-			criuPath,
-		)
-
-		cmd = exec.Command("script", "-q", "-c", criuCmd, "/dev/null")
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{
-				Uid: 0,
-				Gid: 0,
-			},
-		}
+	// Use CRIU to restore the process
+	// Notice: Cannot use '--shell-job' because it will try to attach to the original PTY, which does not exist anymore.
+	cmd := exec.Command(
+		"criu", "restore",
+		"--images-dir", criuPath,
+		"-vv", "-o", "restore.log",
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
 	}
+	devNull, _ := os.OpenFile("/dev/null", os.O_RDWR, 0)
+	cmd.Stdin = devNull
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
 
 	if err := cmd.Start(); err != nil {
 		return -1, fmt.Errorf("failed to restore memory state: %w", err)

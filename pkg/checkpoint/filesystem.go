@@ -94,6 +94,7 @@ func (m *Manager) forceUnmountOverlays() error {
 
 // forceUnmount attempts to unmount with increasing force
 func (m *Manager) forceUnmount(mountPoint string) error {
+	fmt.Printf("Attempting to unmount [%s]...\n", mountPoint)
 	// Try normal unmount first
 	cmd := exec.Command("umount", mountPoint)
 	if err := cmd.Run(); err == nil {

@@ -13,7 +13,7 @@ import (
 )
 
 // NewManagerWithSession creates a new manager with a random session ID
-func NewManagerWithSession(sandboxMode bool) (*Manager, string, error) {
+func NewManagerWithSession() (*Manager, string, error) {
 	sessionID, err := generateSessionID()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate session ID: %w", err)
@@ -24,8 +24,9 @@ func NewManagerWithSession(sandboxMode bool) (*Manager, string, error) {
 	baseDir := filepath.Join(DefaultSessionsDir, sessionID)
 	manager := NewManager(baseDir)
 	manager.sessionID = sessionID
-	manager.sandboxMode = sandboxMode
 	manager.currentParent = []string{}
+	manager.shellPid = ShellNotEnabled
+	manager.shellSocket = ""
 
 	// Save session info globally
 	if err := saveSessionInfo(sessionID, manager); err != nil {
@@ -46,7 +47,8 @@ func LoadManager(sessionID string) (*Manager, error) {
 	manager.sessionID = sessionID
 	manager.originalDir = sessionInfo.OriginalDir
 	manager.workOverlay = sessionInfo.WorkOverlay
-	manager.sandboxMode = sessionInfo.SandboxMode
+	manager.shellPid = sessionInfo.ShellPid
+	manager.shellSocket = sessionInfo.ShellSocket
 	manager.currentParent = sessionInfo.CurrentParent
 
 	return manager, nil
@@ -70,9 +72,10 @@ func saveSessionInfo(sessionID string, manager *Manager) error {
 		BaseDir:       manager.baseDir,
 		OriginalDir:   manager.originalDir,
 		WorkOverlay:   manager.workOverlay,
-		SandboxMode:   manager.sandboxMode,
 		CreatedAt:     time.Now().Unix(),
 		CurrentParent: manager.currentParent,
+		ShellPid:      manager.shellPid,
+		ShellSocket:   manager.shellSocket,
 	}
 
 	data, err := json.MarshalIndent(sessionInfo, "", "  ")

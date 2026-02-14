@@ -1,25 +1,27 @@
 package main
 
 // checkpoint-lite: A lightweight process checkpointing and restoration tool
-// Developed by Alex Xu, DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
+//
+// GitHub Repository: https://github.com/Alex-XJK/checkpoint-lite.git
+// Designed and developed by Alex Jiakai Xu (https://alex-xjk.github.io/), DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
 
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.4.0"
+var Version = "v0.5.0"
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: checkpoint-lite <command> [args...]")
 		fmt.Println("Commands:")
-		fmt.Println("  init <work-directory> [--quiet] [--sandbox]  - Initialize environment")
-		fmt.Println("  create <session> <pid | -1> <checkpoint-id>  - Create checkpoint")
+		fmt.Println("  init <work-directory> [--quiet] [--shell]    - Initialize environment")
+		fmt.Println("  build <dockerfile-directory> [--quiet]       - Build environment from Dockerfile")
+		fmt.Println("  create <session> <checkpoint-id> [pid | -1]  - Create checkpoint")
 		fmt.Println("  restore <session> <checkpoint-id>            - Restore checkpoint")
 		fmt.Println("  exec <session> <command> [args...]           - Execute command in environment")
 		fmt.Println("  list <session>                               - List checkpoints")
@@ -33,23 +35,23 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: init <work-directory> [--quiet] [--sandbox]")
-			fmt.Println("  --sandbox: Enable lightweight sandbox isolation (default: disabled)")
+			fmt.Println("Usage: init <work-directory> [--quiet] [--shell]")
+			fmt.Println("  --shell: Start a shell in the initialized environment after setup")
 			os.Exit(1)
 		}
 		workDir := os.Args[2]
 
 		// Parse flags
 		quiet := false
-		sandboxMode := false
+		shell := false
 
 		for i := 3; i < len(os.Args); i++ {
 			arg := os.Args[i]
 			switch arg {
 			case "--quiet":
 				quiet = true
-			case "--sandbox":
-				sandboxMode = true
+			case "--shell":
+				shell = true
 			default:
 				fmt.Printf("Error: unknown flag: %s\n", arg)
 				os.Exit(1)
@@ -57,7 +59,7 @@ func main() {
 		}
 
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession(sandboxMode)
+		manager, sessionID, err := checkpoint.NewManagerWithSession()
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
@@ -69,30 +71,90 @@ func main() {
 			os.Exit(1)
 		}
 
+		shellPid := 0
+		socketPath := ""
+		if shell {
+			shellPid, socketPath, err = manager.StartShell(overlayPath)
+			if err != nil {
+				fmt.Printf("Error starting shell: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
 		if quiet {
 			fmt.Printf("%s,%s\n", sessionID, overlayPath)
 		} else {
 			fmt.Printf("Environment initialized!\n")
 			fmt.Printf("Session ID: %s\n", sessionID)
 			fmt.Printf("Work in this directory: %s\n", overlayPath)
-			if sandboxMode {
-				fmt.Printf("Sandbox mode: enabled (light)\n")
+			if shell {
+				fmt.Printf("Shell PID: %d [socket: %s]\n", shellPid, socketPath)
 			}
 			fmt.Printf("\nSave the session ID for future operations!\n")
 		}
 
+	case "build":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: build <dockerfile-directory> [--quiet]")
+			os.Exit(1)
+		}
+		dockerfileDir := os.Args[2]
+
+		// Parse flags
+		quiet := false
+
+		for i := 3; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			switch arg {
+			case "--quiet":
+				quiet = true
+			default:
+				fmt.Printf("Error: unknown flag: %s\n", arg)
+				os.Exit(1)
+			}
+		}
+
+		// Create a new manager with a random session
+		manager, sessionID, err := checkpoint.NewManagerWithSession()
+		if err != nil {
+			fmt.Printf("Error creating session: %v\n", err)
+			os.Exit(1)
+		}
+
+		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir, quiet)
+		if err != nil {
+			fmt.Printf("Error building sandbox image: %v\n", err)
+		}
+
+		if quiet {
+			fmt.Printf("%s,%s,%d\n", sessionID, overlayPath, bashPid)
+		} else {
+			fmt.Printf("Sandbox environment built successfully!\n")
+			fmt.Printf("Session ID: %s\n", sessionID)
+			fmt.Printf("Work in this directory: %s\n", overlayPath)
+			fmt.Printf("Sandbox bash PID: %d\n", bashPid)
+			fmt.Printf("\nSave the session ID for future operations!\n")
+		}
+
 	case "create":
-		if len(os.Args) != 5 {
-			fmt.Println("Usage: create <session> <pid | -1> <checkpoint-id>")
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: create <session> <checkpoint-id> [pid | -1]")
+			fmt.Println("  If pid not provided, checkpoint the shell if enabled; otherwise, skip memory checkpoint")
+			fmt.Println("  Use -1 to force skip memory checkpoint")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]
-		pid, err := strconv.Atoi(os.Args[3])
-		if err != nil {
-			fmt.Printf("Invalid PID: %s\n", os.Args[3])
-			os.Exit(1)
+		checkpointID := os.Args[3]
+
+		pid := checkpoint.PidNotProvided
+		err := error(nil)
+		if len(os.Args) > 4 {
+			pid, err = strconv.Atoi(os.Args[4])
+			if err != nil {
+				fmt.Printf("Invalid PID: %s\n", os.Args[4])
+				os.Exit(1)
+			}
 		}
-		checkpointID := os.Args[4]
 
 		manager, err := checkpoint.LoadManager(sessionID)
 		if err != nil {
@@ -131,7 +193,7 @@ func main() {
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: exec <session> <command> [args...]")
 			fmt.Println("  Execute a command in the checkpoint environment")
-			fmt.Println("  If sandbox mode is enabled, command runs in isolated sandbox")
+			fmt.Println("  If shell enabled, command runs using the shell's sandbox; otherwise, it runs directly in the work overlay")
 			os.Exit(1)
 		}
 		sessionID := os.Args[2]
@@ -144,26 +206,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		cmd, err := manager.ExecuteCommand(command, args...)
+		output, err := manager.ExecuteCommand(command, args...)
 		if err != nil {
-			fmt.Printf("Error preparing command: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Connect stdin, stdout, stderr
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// Run the command
-		if err := cmd.Run(); err != nil {
-			// Exit with the same code as the command
-			if exitError, ok := err.(*exec.ExitError); ok {
-				os.Exit(exitError.ExitCode())
-			}
 			fmt.Printf("Error executing command: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Println(output)
 
 	case "list":
 		if len(os.Args) != 3 {

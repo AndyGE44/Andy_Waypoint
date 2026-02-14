@@ -30,16 +30,26 @@ func NewManager(baseDir string) *Manager {
 // ExecuteCommand executes a command in the checkpoint environment.
 // If sandbox mode is enabled, the command runs in an isolated sandbox.
 // Otherwise, it runs directly in the work overlay directory.
-func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, error) {
-	if m.sandboxMode {
-		// Use sandbox isolation - pass originalDir so commands start there
-		return ExecuteInSandbox(m.workOverlay, m.originalDir, command, args...)
-	} else {
-		// Execute directly in work overlay (which contains the original directory's content)
-		cmd := exec.Command(command, args...)
-		cmd.Dir = m.workOverlay
-		return cmd, nil
+func (m *Manager) ExecuteCommand(command string, args ...string) (string, error) {
+	if m.shellPid != ShellNotEnabled && m.shellSocket != "" {
+		// If shell is enabled, execute command through the shell's sandbox
+		socketPath := m.shellSocket
+		commandString := command + " " + strings.Join(args, " ") + "\n"
+		output, err := execCommand(socketPath, commandString)
+		if err != nil {
+			return "", fmt.Errorf("failed to execute command: %w", err)
+		}
+		return output, nil
 	}
+
+	// If shell is not enabled, execute command directly in the work overlay
+	cmd := exec.Command(command, args...)
+	cmd.Dir = m.workOverlay
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute command: %w\nOutput: %s", err, string(outputBytes))
+	}
+	return string(outputBytes), nil
 }
 
 // CreateCheckpoint creates both the filesystem and the memory checkpoint
@@ -51,8 +61,18 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (*exec.Cmd, err
 // CreateCheckpointNew creates a new checkpoint with the given ID
 func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// Validate checkpoint ID
+	// TODO: Check for duplication
 	if checkpointID == "" || checkpointID == "current" {
 		return fmt.Errorf("invalid checkpoint ID: %s", checkpointID)
+	}
+
+	// Special case for Default PID: Use Bash PID if available, otherwise skip memory checkpoint
+	if pid == PidNotProvided {
+		if m.shellPid != ShellNotEnabled {
+			pid = m.shellPid
+		} else {
+			pid = SkipMemoryCheckpoint
+		}
 	}
 
 	// Create a memory checkpoint to "~/current/criu/*.img"
@@ -131,6 +151,13 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
+	// If the previous checkpoint contains process, we need to first kill it, so that mountpoint can be released.
+	if checkpointMetadata.PID != SkipMemoryCheckpoint {
+		if err := m.killProcess(checkpointMetadata.PID); err != nil {
+			return 0, fmt.Errorf("failed to kill original process %d: %w", checkpointMetadata.PID, err)
+		}
+	}
+
 	// Unmount current overlay for future remount
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -189,6 +216,19 @@ func (m *Manager) ListCheckpoints() ([]string, error) {
 
 // Cleanup removes all files and unmounts the overlay for this session
 func (m *Manager) Cleanup() error {
+	// Cleanup shell related resources if shell enabled
+	if m.shellPid != ShellNotEnabled {
+		if err := m.killProcess(m.shellPid); err != nil {
+			fmt.Printf("Warning: Failed to kill shell process: %v\n", err)
+		} else {
+			// Remove the socket file if it exists
+			if m.shellSocket != "" {
+				// Ignore errors - might already be removed
+				os.Remove(m.shellSocket)
+			}
+		}
+	}
+
 	// Unmount overlay
 	if m.workOverlay != "" {
 		cmd := exec.Command("umount", m.workOverlay)
@@ -208,22 +248,22 @@ func (m *Manager) Cleanup() error {
 func (m *Manager) CleanupForce() error {
 	fmt.Printf("Starting forceful cleanup for session %s...\n", m.sessionID)
 
-	// Step 1: Unmount overlay filesystems
-	fmt.Println("Unmounting overlay filesystems...")
-	if err := m.forceUnmountOverlays(); err != nil {
-		fmt.Printf("Warning: Failed to unmount overlays: %v\n", err)
-	}
-
-	// Step 2: Kill processes using files in this directory
+	// Step 1: Kill processes using files in this directory
 	fmt.Println("Killing processes using session directory...")
 	if err := m.killProcessesUsingDirectory(); err != nil {
 		fmt.Printf("Warning: Failed to kill some processes: %v\n", err)
 	}
 
-	// Step 3: Close file handles
+	// Step 2: Close file handles
 	fmt.Println("Closing file handles...")
 	if err := m.closeFileHandles(); err != nil {
 		fmt.Printf("Warning: Failed to close some file handles: %v\n", err)
+	}
+
+	// Step 3: Unmount overlay filesystems
+	fmt.Println("Unmounting overlay filesystems...")
+	if err := m.forceUnmountOverlays(); err != nil {
+		fmt.Printf("Warning: Failed to unmount overlays: %v\n", err)
 	}
 
 	// Step 4: Force unmount any remaining mounts
@@ -235,6 +275,7 @@ func (m *Manager) CleanupForce() error {
 	// Step 5: Try removing the directory multiple times with a backoff
 	fmt.Println("Removing session directory...")
 	if err := m.removeDirectoryWithRetry(); err != nil {
+		// Must error out if we cannot remove the directory, otherwise we might leave a broken session
 		return fmt.Errorf("failed to remove session directory after multiple attempts: %w", err)
 	}
 

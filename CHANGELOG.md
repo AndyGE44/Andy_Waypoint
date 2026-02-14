@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0 — Isolated Shell Sessions & Dockerfile-Based Environment Build
+**Persistent shell isolation and environment construction workflow**
+- Designed and implemented an RPC-based Shell Session Manager to maintain persistent, isolated shell states across checkpoints and restores.
+- Extended the `exec` command to execute within the context of a managed shell session.
+- Introduced a new `build` command to construct environments from a Dockerfile.
+- Updated the CLI to support shell-session lifecycle management and Dockerfile-based build workflows.
+- Refactored project structure.
+
 ## v0.4.0 — New Filesystem Architecture
 **Major redesign of filesystem checkpointing and restore pipeline**
 - Introduced a fully new filesystem architecture with parent-tracking logic.
@@ -35,5 +43,5 @@
 ## v0.0.1 — Initial Setup
 **Project bootstrap**
 - Initial commit and technical architecture selection.
-- Set up Go environment and drafted core structures.
+- Set up the Go environment and drafted core structures.
 - Added CLI usage documentation.
