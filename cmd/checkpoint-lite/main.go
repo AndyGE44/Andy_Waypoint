@@ -3,7 +3,7 @@ package main
 // checkpoint-lite: A lightweight process checkpointing and restoration tool
 //
 // GitHub Repository: https://github.com/Alex-XJK/checkpoint-lite.git
-// Developed by Alex Xu, DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
+// Designed and developed by Alex Jiakai Xu (https://alex-xjk.github.io/), DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.5.0-dev"
+var Version = "v0.5.0"
 
 func main() {
 	if len(os.Args) < 2 {

@@ -5,13 +5,14 @@ Built on top of CRIU and OverlayFS for fast, isolated process state management.
 
 ## Overview 🌟
 
-`checkpoint-lite` provides a simple interface to checkpoint and restore running processes while capturing both their 
-memory state and filesystem changes. Unlike heavyweight container solutions, this tool focuses on minimal overhead 
-by directly orchestrating existing kernel features.
+`checkpoint-lite` provides a simple interface to checkpoint and restore running processes while capturing all their 
+memory state, live terminal sessions, and filesystem changes. Unlike heavyweight container solutions, this tool focuses
+on minimal overhead by directly orchestrating existing kernel features and redesigning terminal session management.
 
 ### Key Features
 
 - **Hybrid State Capture**: Combines filesystem (OverlayFS) and memory (CRIU) checkpointing
+- **Terminal Session Support**: Preserves live terminal sessions and their state across checkpoints
 - **Multi-Session Support**: Concurrent usage by multiple applications with isolated sessions
 - **Minimal Overhead**: Direct system calls without unnecessary container abstractions
 - **Minimal File IO**: Uses multiple lower-layer designs to achieve true inter-checkpoint deduplication
@@ -29,16 +30,17 @@ unnecessary features like network isolation, security policies, and registry ope
 
 1. **Filesystem State**: Uses OverlayFS to capture directory changes without copying entire filesystems
 2. **Memory State**: Leverages CRIU for process memory and execution state
-3. **Isolation**: Session-based isolation instead of full containerization
-4. **Performance**: Direct tool orchestration minimizes call overhead
+3. **Terminal Sessions**: Implements a custom RPC-style PTY session management to preserve live terminal sessions across checkpoints
+4. **Isolation**: Session-based isolation instead of full containerization
+5. **Performance**: Direct tool orchestration minimizes call overhead
 
 ### Core Components
 
 ```
-┌─────────────────┐    ┌─────────────────┐
-│   Filesystem    │    │     Memory      │
-│   (OverlayFS)   │    │     (CRIU)      │
-└─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐           ┌─────────────────┐
+│   Filesystem    │    │     Memory      │ ───────── │   PTY Session   │
+│   (OverlayFS)   │    │     (CRIU)      │           │   Management    │
+└─────────────────┘    └─────────────────┘           └─────────────────┘
          │                       │
          └───────────┬───────────┘
                      │
@@ -50,6 +52,7 @@ unnecessary features like network isolation, security policies, and registry ope
 
 - **OverlayFS Integration**: Creates layered filesystem views with minimal storage overhead
 - **CRIU Orchestration**: Manages process memory dumping and restoration
+- **PTY Session Management**: Uses an RPC-style approach to capture and communicate with terminal sessions
 - **Session Manager**: Handles concurrent usage and resource isolation
 
 ### Go Language Technology Decision
@@ -64,6 +67,7 @@ See [our architecture decision record](./tech_selection_note.md) for more detail
 - CRIU installed and configured
 - OverlayFS support (most modern Linux distributions)
 - Go 1.23 (for building from source)
+- Optional: `buildah` for the build from Dockerfile approach (since v0.5.0)
 
 ### Install Go (just for reference)
 ```bash
@@ -99,22 +103,18 @@ sudo criu check
 ```bash
 git clone https://github.com/Alex-XJK/checkpoint-lite.git
 cd checkpoint-lite
-go build -o checkpoint-lite
+go build -o checkpoint-lite cmd/checkpoint-lite/main.go
+go build -o bash_init cmd/bash-init/main.go
 ```
 
 ### Check Checkpoint-Lite Version
 
 ```bash
 ./checkpoint-lite version
-# Output: checkpoint-lite version v0.4.0
+# Output: checkpoint-lite version v0.5.0
 ```
 
 ## Usage 🗂
-
-<!--
-New architect diagram to be added later...
-![checkpoint-lite workflow](./docs/checkpoint-lite.drawio.png)
--->
 
 ### 0. [Optional] Configure Global Settings
 
@@ -136,6 +136,8 @@ Noticed the configuration takes effect in the following order of precedence:
 
 ### 1. Initialize Environment
 
+#### 1.1. Initialize with Workspace
+
 Create a managed environment for your application:
 
 ```bash
@@ -155,9 +157,40 @@ Save the session ID for future operations!
 
 Special options:
 - `--quiet` to output only the session ID and work directory, separated by a comma. (Since v0.2.1)
-- `--sandbox` to config the execution sandbox for the managed application. (Since v0.3.0)
+- `--shell` to start a shell in the managed environment immediately after initialization. (Since v0.5.0)
+  - You should make sure the provided workspace contains the necessary files for the shell to work, e.g., `/bin/bash`.
+
+#### 1.2. Build Environment with Dockerfile (since v0.5.0)
+
+You can alternatively build a sandbox environment directly with the `build` command, just like a Docker build.
+This will set up a sandboxed environment with the provided Dockerfile and start a bash session in it.
+
+```bash
+sudo ./checkpoint-lite build /path/to/your/Dockerfile-directory
+```
+
+Output:
+```
+(Some build output from buildah...)
+Sandbox environment built successfully!
+Session ID: a1b2c3d4e5f6g7h8
+Work in this directory: /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
+Sandbox bash PID: 1234
+
+Save the session ID for future operations!
+```
+
+Special options:
+- `--quiet` to output only the session ID, work directory, and bash PID, separated by commas.
+
+> Credit: This `buildah`-based workflow was originally designed by [Tianle Zhou](https://www.linkedin.com/in/tian-le-zhou-99a145221/)
+in his TBench integration for v0.2.0.
 
 ### 2. Run Your Application
+
+#### 2.1. Manual Execution
+
+The simplest way is to just run your application in the provided work directory.
 
 ```bash
 cd /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
@@ -165,16 +198,34 @@ cd /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
 # Note the PID, e.g., 1234
 ```
 
+#### 2.2. Execute Shell Commands
+
+Since v0.3.0, you can also execute shell commands directly in the managed environment.
+
+Since v0.5.0, if you used the `--shell` option during initialization or the `build` command, we provide you with an isolated
+shell session in the managed environment. You can directly run your bash commands there without worrying about the workspace isolation.
+
+```bash
+sudo ./checkpoint-lite exec a1b2c3d4e5f6g7h8 cat hello_world.txt
+```
+
+Note that the `exec` command can be used all the time, regardless of whether you started a shell session or not.
+
+If you have a shell session, the `exec` command will execute using a long-running shell session, and will be able to preserve
+state across multiple `exec` calls and also across checkpoints.
+If you don't have a shell session, the `exec` will simply help you execute the command in the correct workspace.
+
 ### 3. Create Checkpoints
 
 ```bash
-sudo ./checkpoint-lite create a1b2c3d4e5f6g7h8 1234 checkpoint-name
+sudo ./checkpoint-lite create a1b2c3d4e5f6g7h8 checkpoint-name 1234
 ```
-With the help of goroutines, this command runs the CRIU dump and OverlayFS snapshot in parallel,
-reducing 40% of the time compared to sequential execution in our tests.
 
 Special options:
-- Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`. However, this should only be used if you are sure that the application does not relate to the managed directory, or you are not running any application at all and simply want to capture the filesystem state.
+- Since v0.2.0, if you want to create a checkpoint without the memory state, you can set the PID to `-1`. 
+  - However, this should only be used if you are sure that the application does not relate to the managed directory, or you are not running any application at all and simply want to capture the filesystem state.
+- Since v0.5.0, if you did not provide a PID during checkpoint creation, we will automatically checkpoint the long-running shell session (if it exists). 
+  - This is especially useful when you start a shell session with `--shell` or the `build` command, as you can simply checkpoint the shell session without worrying about the PID.
 
 ### 4. Restore From Checkpoint
 
@@ -182,22 +233,13 @@ Special options:
 sudo ./checkpoint-lite restore a1b2c3d4e5f6g7h8 checkpoint-name
 ```
 
-### 5. Execute Shell Commands Directly In The Managed Environment
-
-```bash
-sudo ./checkpoint-lite exec a1b2c3d4e5f6g7h8 cat hello_world.txt
-````
-
-If the `--sandbox` option was used during initialization, the command will be executed within the sandboxed environment.
-Otherwise, it will be executed directly in the managed workspace.
-
-### 6. List Available Checkpoints
+### 5. List Available Checkpoints
 
 ```bash
 sudo ./checkpoint-lite list a1b2c3d4e5f6g7h8
 ```
 
-### 7. Clean Up Session
+### 6. Clean Up Session
 
 ```bash
 sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
@@ -208,6 +250,7 @@ further actions. Namely, you can use:
 
 ## Example Workflow 🧩
 
+### Example 1: Checkpointing a Simulator Application
 ```bash
 # Initialize environment
 sudo ./checkpoint-lite init /home/user/myproject
@@ -223,11 +266,11 @@ cd /tmp/checkpoint-sessions/abc123def456/work
 ## [1] 5678
 
 # Create checkpoints after some computation
-sudo ./checkpoint-lite create abc123def456 5678 simulation-step-100
+sudo ./checkpoint-lite create abc123def456 simulation-step-100 5678
 ## Checkpoint 'simulation-step-100' created successfully
 
 # Continue running, create another checkpoint
-sudo ./checkpoint-lite create abc123def456 5678 simulation-step-200
+sudo ./checkpoint-lite create abc123def456 simulation-step-200 5678
 ## Checkpoint 'simulation-step-200' created successfully
 
 # List available checkpoints
@@ -243,6 +286,54 @@ sudo ./checkpoint-lite restore abc123def456 simulation-step-100
 # Clean up when done
 sudo ./checkpoint-lite cleanup abc123def456
 ## Session 'abc123def456' cleaned up successfully
+```
+
+### Example 2: Checkpointing with a Shell Session
+```bash
+# Initialize environment using a Dockerfile
+sudo ./checkpoint-lite build /home/docker-tasks/context
+## STEP 1/3: FROM ubuntu-24-04:latest
+## (Some build output from buildah...)
+## Sandbox environment built successfully!
+## Session ID: abc123def456
+## Work in this directory: /mydata/checkpoint-sessions/abc123def456/work
+## Sandbox bash PID: 123456
+##
+## Save the session ID for future operations!
+
+# Run some commands in the provided shell session
+sudo ./checkpoint-lite abc123def456 cd /app
+sudo ./checkpoint-lite abc123def456 export ENV_VAR=start
+
+# Create a checkpoint of the shell session
+sudo ./checkpoint-lite create abc123def456 before-run
+## Checkpoint 'before-run' created successfully
+
+# Continue running some commands
+sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+## VALUE: start PWD: /app
+sudo ./checkpoint-lite exec abc123def456 ./run-app.sh
+sudo ./checkpoint-lite exec abc123def456 export ENV_VAR=finished
+sudo ./checkpoint-lite exec abc123def456 cd ./results
+sudo ./checkpoint-lite exec abc123def456 ls
+## (Output from ls, e.g., result1.txt result2.txt)
+
+# Create another checkpoint
+sudo ./checkpoint-lite create abc123def456 after-run
+## Checkpoint 'after-run' created successfully
+
+# Continue running some commands
+sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+## VALUE: finished PWD: /app/results
+
+# Restore to earlier state
+sudo ./checkpoint-lite restore abc123def456 before-run
+## Checkpoint 'before-run' restored, new PID: 123456
+sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+## VALUE: start PWD: /app
+
+# Clean up when done
+sudo ./checkpoint-lite cleanup abc123def456
 ```
 
 ## Directory Structure 🗃
@@ -274,7 +365,6 @@ sudo ./checkpoint-lite cleanup abc123def456
 ## Technical Details ⌨️
 
 ### OverlayFS Initialization
-
 - **Lower Layer**: Original workspace (read-only)
 - **Upper Layer**: Application changes (copy-on-write)
 - **Work Layer** (`~/current/work/`): Temporary storage for OverlayFS internal operations
@@ -293,12 +383,22 @@ sudo ./checkpoint-lite cleanup abc123def456
 - **CRIU Restore**: Restores process memory and execution state from the checkpoint
 
 ### Session Isolation
-
 Each session gets:
 - Unique randomly generated session ID
 - Isolated directory structure
 - Independent OverlayFS mounts
 - Separate checkpoint namespaces
+- Dedicated Shell server for terminal session management
+
+### Terminal Session Management
+- **RPC server**: A controlling process that manages a PTY session and listens for commands via Unix domain socket
+- **Isolated bash core**: A long-running bash session in a `chroot`-isolated environment that executes commands
+- **RPC-style communication**: The bash server receives commands, forwards them to the bash core, and returns results, allowing stateful command execution across checkpoints
+- **RPC client**: The main checkpoint-lite process acts as a client to send commands to the bash server
+
+> Credit: This is an iterated version of the command injection method implemented by 
+[Georgios Liargkovas](https://liargkovas.com/) in the v0.4.0 series. It was first designed and trialed by 
+[Alex Jiakai Xu](https://alex-xjk.github.io/) in his [pty-rpc-shell](https://github.com/Alex-XJK/pty-rpc-shell) side project.
 
 ## Limitations
 

@@ -3,7 +3,7 @@ package main
 // pty-rpc-shell: A RPC shell implementation that turns an interactive process into a request–response execution service.
 //
 // GitHub Repository: https://github.com/Alex-XJK/pty-rpc-shell.git
-// Developed by Alex Xu, DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
+// Designed and developed by Alex Jiakai Xu (https://alex-xjk.github.io/), DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
 
 import (
 	"bufio"
@@ -67,7 +67,7 @@ func main() {
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: chrootDir,
-		Setsid:     true,
+		Setsid: true,
 	}
 	cmd.Dir = "/"
 	cmd.Stdin = ptySlave
