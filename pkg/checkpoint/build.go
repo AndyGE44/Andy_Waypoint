@@ -96,8 +96,13 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 // StartShell launches a new chroot-embedded bash_init process at the given workDir.
 // On success, it updates the session info with the shell PID and socket path for later use.
 func (m *Manager) StartShell(workDir string) (int, string, error) {
-	bashInitSrc := "./bash_init"                                                      // TODO: Read from config
-	socketPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.sock", m.sessionID)) // TODO: Unify working files
+	// Locate bash_init binary
+	bashInitSrc := DefaultBashInitSrc
+	if _, err := os.Stat(bashInitSrc); os.IsNotExist(err) {
+		return ShellNotEnabled, "", fmt.Errorf("bash_init binary not found at %s", bashInitSrc)
+	}
+
+	socketPath := filepath.Join(m.baseDir, "temp", fmt.Sprintf("shell_%s.sock", m.sessionID))
 
 	// Judge /bin/bash pre-requisite for bash_init
 	bashPath := filepath.Join(workDir, "bin/bash")
@@ -118,7 +123,7 @@ func (m *Manager) StartShell(workDir string) (int, string, error) {
 	cmd.Stdin = devNull
 
 	// stdout/stderr -> log file
-	logPath := filepath.Join("/tmp", fmt.Sprintf("ckptlite_%s.log", m.sessionID)) // TODO: Unify working files
+	logPath := filepath.Join(m.baseDir, "temp", fmt.Sprintf("shell_%s.log", m.sessionID))
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return ShellNotEnabled, "", fmt.Errorf("failed to open log file: %w", err)

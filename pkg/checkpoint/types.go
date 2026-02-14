@@ -15,7 +15,7 @@ type Manager struct {
 	workOverlay   string   // Current working overlay mount point, e.g., /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
 	originalDir   string   // Original directory being managed, e.g., /home/user/app-data
 	sessionID     string   // Unique session identifier, e.g., a1b2c3d4e5f6g7h8
-	shellPid      int      // PID of the shell process if a shell is enabled, 0 otherwise
+	shellPid      int      // PID of the shell process if a shell is enabled, ShellNotEnabled(=0) otherwise
 	shellSocket   string   // Path to the shell socket if enabled, empty otherwise
 	currentParent []string // Current parent checkpoints
 }
@@ -53,19 +53,23 @@ const PidNotProvided = -2       // PID not provided for checkpointing
 const SessionInfoDir = "/tmp/checkpoint-sessions-info"
 
 // The below section handles configuration loading.
+// Those variables can be overridden by configuration.
 
 // DefaultSessionsDir is the default directory for storing checkpoint sessions.
-// It can be overridden by configuration.
 var DefaultSessionsDir = "/tmp/checkpoint-sessions"
 
+// DefaultBashInitSrc is the default source path for the bash_init binary used for shell sessions.
+var DefaultBashInitSrc = "./bash_init"
+
 type config struct {
-	SessionsDir string `json:"sessions_dir"`
+	SessionsDir string `json:"sessions_dir,omitempty"`
+	BashInitSrc string `json:"bash_init_src,omitempty"`
 }
 
 // loadConfig loads custom configuration.
 func loadConfig() {
 	// Determine config by precedence:
-	// 1) Direct environment variable of `CHECKPOINT_SESSIONS_DIR` take the highest precedence.
+	// 1) Direct environment variable of `CHECKPOINT_*` take the highest precedence.
 	// 2) Determine config file path by precedence:
 	//    a) explicit `CHECKPOINT_CONFIG` environment variable
 	//    b) binary-side config: ./config.json (same dir as executable)
@@ -76,6 +80,9 @@ func loadConfig() {
 	// 1) Direct env var overrides
 	if v := os.Getenv("CHECKPOINT_SESSIONS_DIR"); v != "" {
 		DefaultSessionsDir = v
+	}
+	if v := os.Getenv("CHECKPOINT_BASH_INIT_SRC"); v != "" {
+		DefaultBashInitSrc = v
 	}
 
 	// 2) Config file path determination
@@ -133,6 +140,9 @@ func loadConfig() {
 			if err := json.Unmarshal(data, &cfg); err == nil {
 				if cfg.SessionsDir != "" && os.Getenv("CHECKPOINT_SESSIONS_DIR") == "" {
 					DefaultSessionsDir = cfg.SessionsDir
+				}
+				if cfg.BashInitSrc != "" && os.Getenv("CHECKPOINT_BASH_INIT_SRC") == "" {
+					DefaultBashInitSrc = cfg.BashInitSrc
 				}
 			}
 		}

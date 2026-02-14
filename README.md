@@ -121,12 +121,13 @@ go build -o bash_init cmd/bash-init/main.go
 You can create a configuration file to set global options. Example content:
 ```json
 {
-  "sessions_dir": "/custom/path/checkpoint-sessions"
+  "sessions_dir": "/custom/path/checkpoint-sessions",
+  "bash_init_src": "/custom/compiled/bash_init"
 }
 ```
 
 Noticed the configuration takes effect in the following order of precedence:
-1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`
+1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`, `CHECKPOINT_BASH_INIT_SRC`, etc. (if set)
 2. Load from configuration file (if exists):
    - Explicit `CHECKPOINT_CONFIG` environment variable
    - Binary-side config: `./config.json` (same dir as executable)
@@ -350,11 +351,13 @@ sudo ./checkpoint-lite cleanup abc123def456
     │   │       └── *.img
     │   ├── metadata/               # Checkpoint metadata
     │   │   └── ckpt-1.json         # "Metadata" for ckpt-1
+    │   ├── temp/                   # Internal temporary files (e.g., for shell socket and logs)
     │   └── work/                   # App A works here (Overlay merged view)
     └── x9y8z7w6v5u4t3s2/           # App B's session
      	├── current/
     	├── ckpt-a/
      	├── metadata/
+     	├── temp/
       	└── work/
   
  /tmp/checkpoint-sessions-info/     # Global session registry

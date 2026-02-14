@@ -15,10 +15,12 @@ import (
 func NewManager(baseDir string) *Manager {
 	metadataDir := filepath.Join(baseDir, "metadata")
 	workOverlay := filepath.Join(baseDir, "work")
+	temporaryDir := filepath.Join(baseDir, "temp")
 
 	// Create directories
 	os.MkdirAll(metadataDir, 0755)
 	os.MkdirAll(workOverlay, 0755)
+	os.MkdirAll(temporaryDir, 0777)
 
 	return &Manager{
 		baseDir:     baseDir,
