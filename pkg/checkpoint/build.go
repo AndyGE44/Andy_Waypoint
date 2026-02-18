@@ -14,7 +14,8 @@ import (
 )
 
 func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
-	imageTag := fmt.Sprintf("ckptlite_%s:%d", filepath.Base(dockerfileDir), time.Now().Unix())
+	lowercaseBasename := strings.ToLower(filepath.Base(dockerfileDir))
+	imageTag := fmt.Sprintf("ckptlite_%s:%d", lowercaseBasename, time.Now().Unix())
 
 	run := func(cmd *exec.Cmd, capture bool) (string, error) {
 		var stdout bytes.Buffer

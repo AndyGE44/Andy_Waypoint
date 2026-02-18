@@ -176,7 +176,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 	fmt.Println("Recv >> ===== End =====")
 
 	// Write command to PTY with unique marker
-	cmdWithMarker := trim_line + fmt.Sprintf("; echo '%s'\n", marker)
+	cmdWithMarker := trim_line + fmt.Sprintf("; echo -e '\\n%s'\n", marker)
 	_, err = ptyMaster.WriteString(cmdWithMarker)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
@@ -244,6 +244,7 @@ func cleanOutput(raw, cmdSent, marker string) string {
 
 	lines := strings.Split(cleaned, "\n")
 	var result []string
+	cmdEchoLength := len(cmdSent)
 
 	for i, line := range lines {
 		fmt.Printf("Line %d: %q\n", i, line)
@@ -257,8 +258,15 @@ func cleanOutput(raw, cmdSent, marker string) string {
 		}
 
 		// Skip the echoed command
-		if strings.Contains(line, cmdSent) {
+		if strings.HasPrefix(line, cmdSent[:10]) {
 			fmt.Println("Judge >> Echoed command line")
+			cmdEchoLength = cmdEchoLength - len(line)
+			continue
+		}
+
+		if cmdEchoLength > 0 && i <= cmdEchoLength {
+			fmt.Println("Judge >> Echoed command line (length-based)")
+			cmdEchoLength = cmdEchoLength - len(line)
 			continue
 		}
 
@@ -269,7 +277,7 @@ func cleanOutput(raw, cmdSent, marker string) string {
 		}
 
 		// Skip bash prompt patterns
-		if (strings.HasPrefix(trimmed, "bash-") && (strings.HasSuffix(trimmed, "#") || strings.HasSuffix(trimmed, "$"))) ||
+		if ((strings.HasPrefix(trimmed, "bash-") || strings.Contains(trimmed, "@")) && (strings.HasSuffix(trimmed, "#") || strings.HasSuffix(trimmed, "$"))) ||
 			trimmed == "$" || trimmed == "#" {
 			fmt.Println("Judge >> Bash prompt line")
 			continue
