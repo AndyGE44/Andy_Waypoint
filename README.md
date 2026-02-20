@@ -249,6 +249,11 @@ If this basic version of the cleanup command fails, our **checkpoint-lite** will
 further actions. Namely, you can use:
 - `--force` to forcefully remove and unmount all the related resources.
 
+## Demo 🎥
+
+- **Direct CLI Usage** – Using checkpoint-lite directly from the terminal: https://youtu.be/fbNlGyIndjc
+- **StateFork Integration** – Using checkpoint-lite as a backend inside StateFork’s interactive shell: https://youtu.be/oe8ONkqr2a8
+
 ## Example Workflow 🧩
 
 ### Example 1: Checkpointing a Simulator Application
