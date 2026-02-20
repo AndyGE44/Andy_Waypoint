@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+title: "checkpoint-lite"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - family-names: Xu
+    given-names: Jiakai
+  - family-names: Liargkovas
+    given-names: Georgios
+  - family-names: Gillai
+    given-names: Danielle
+  - family-names: Wu
+    given-names: Eugene
+  - family-names: Kaffes
+    given-names: Kostis
+identifiers:
+  - type: doi
+    value: 10.48550/arXiv.2510.05556
+repository-code: 'https://github.com/Alex-XJK/checkpoint-lite'
+abstract: >-
+  A lightweight checkpoint/restore tool that captures both
+  filesystem and memory state with minimal overhead. Built
+  on top of CRIU and OverlayFS for fast, isolated process
+  state management.
+license: Apache-2.0
+version: 0.5.1
+date-released: '2026-02-20'
+references:
+  - type: article
+    title: "Toward Systems Foundations for Agentic Exploration"
+    authors:
+      - family-names: Xu
+        given-names: Jiakai
+      - family-names: Zhou
+        given-names: Tianle
+      - family-names: Wu
+        given-names: Eugene
+      - family-names: Kaffes
+        given-names: Kostis
+    year: 2025
+    url: https://arxiv.org/abs/2510.05556

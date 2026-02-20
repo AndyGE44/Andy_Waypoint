@@ -408,3 +408,18 @@ Each session gets:
 - Requires root privileges (CRIU and OverlayFS requirement)
 - Linux-specific (depends on CRIU and OverlayFS)
 - Network connections may not survive checkpoint/restore
+
+## Citation
+
+If you use checkpoint-lite in academic research, please cite:
+```bibtex
+@misc{xu2025systemsfoundationsagenticexploration,
+      title={Toward Systems Foundations for Agentic Exploration}, 
+      author={Jiakai Xu and Tianle Zhou and Eugene Wu and Kostis Kaffes},
+      year={2025},
+      eprint={2510.05556},
+      archivePrefix={arXiv},
+      primaryClass={cs.DC},
+      url={https://arxiv.org/abs/2510.05556}
+}
+```
