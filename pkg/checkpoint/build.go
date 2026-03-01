@@ -91,6 +91,27 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 		}
 	}
 
+	// 6. Create a normal file to mimic /dev/null
+	devDir := filepath.Join(workspaceDir, "dev")
+	if err := os.MkdirAll(devDir, 0755); err != nil {
+		return fmt.Errorf("failed to create dev directory: %w", err)
+	}
+	devNullPath := filepath.Join(devDir, "null")
+	if fi, err := os.Lstat(devNullPath); err == nil {
+		if fi.Mode()&os.ModeType != 0 {
+			if err := os.Remove(devNullPath); err != nil {
+				return fmt.Errorf("failed to replace /dev/null with regular file: %w", err)
+			}
+		}
+	}
+	devNullFile, err := os.OpenFile(devNullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("failed to create /dev/null regular file: %w", err)
+	}
+	if err := devNullFile.Close(); err != nil {
+		return fmt.Errorf("failed to close /dev/null regular file: %w", err)
+	}
+
 	return nil
 }
 
