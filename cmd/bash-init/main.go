@@ -184,7 +184,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 	}
 
 	// Wait for output with timeout
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(60000 * time.Second)
 	checkInterval := 50 * time.Millisecond
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
