@@ -242,31 +242,30 @@ func cleanOutput(raw, cmdSent, marker string) string {
 	// Strip control characters
 	cleaned := stripControlChars(raw)
 
+	// Use a byte-budget approach to skip the echoed command across wrapped lines.
+	// Initialize with the exact length of the sent command (including trailing newline).
+	remainingEcho := len(cmdSent)
+
 	lines := strings.Split(cleaned, "\n")
 	var result []string
-	cmdEchoLength := len(cmdSent)
 
 	for i, line := range lines {
 		fmt.Printf("Line %d: %q\n", i, line)
 
 		trimmed := strings.TrimSpace(line)
 
+		// While we are still within the echoed command byte budget, drop lines entirely.
+		// Account for the implicit '\n' that was removed by strings.Split by adding 1.
+		if remainingEcho > 0 {
+			fmt.Println("Judge >> Echoed command (budget)")
+			remainingEcho -= len(line) + 1
+			// As noted, the echo is always followed by a newline; dropping the line is safe.
+			continue
+		}
+
 		// Skip empty lines
 		if trimmed == "" {
 			fmt.Println("Judge >> Empty line")
-			continue
-		}
-
-		// Skip the echoed command
-		if strings.HasPrefix(line, cmdSent[:10]) {
-			fmt.Println("Judge >> Echoed command line")
-			cmdEchoLength = cmdEchoLength - len(line)
-			continue
-		}
-
-		if cmdEchoLength > 0 && i <= cmdEchoLength {
-			fmt.Println("Judge >> Echoed command line (length-based)")
-			cmdEchoLength = cmdEchoLength - len(line)
 			continue
 		}
 
