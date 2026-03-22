@@ -173,7 +173,6 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 	}
 
 	// Generate a unique marker for this command.
-	// Important: the *actual* marker includes the expanded $$, but the echoed command only contains literal $$.
 	markerNonce := time.Now().UnixNano()
 	marker := fmt.Sprintf("__CMD_DONE_%d_%d__", bashPID, markerNonce)
 	markerRegex := buildWrappedMarkerRegex(marker)
@@ -192,7 +191,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 
 	// Wait for output with timeout
 	timeout := time.After(60000 * time.Second)
-	checkInterval := 50 * time.Millisecond
+	checkInterval := 10 * time.Millisecond
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
