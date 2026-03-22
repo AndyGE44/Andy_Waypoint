@@ -64,6 +64,7 @@ func main() {
 		"/bin/bash",
 		"--norc",
 		"--noprofile",
+		"--noediting",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: chrootDir,
@@ -78,8 +79,10 @@ func main() {
 		panic(err)
 	}
 
+	bashPID := cmd.Process.Pid
+
 	fmt.Println("Server pid:", os.Getpid())
-	fmt.Println("Bash pid:", cmd.Process.Pid)
+	fmt.Println("Bash pid:", bashPID)
 	fmt.Println("Socket path:", socketPath)
 	fmt.Println("Ready to receive commands from Unix Domain Socket...")
 
@@ -97,16 +100,8 @@ func main() {
 			return
 		}
 
-		go handleClient(conn, ptyMaster, &ptyMutex, outputBuffer)
+		go handleClient(conn, ptyMaster, &ptyMutex, outputBuffer, bashPID)
 	}
-
-	// // Wait for termination signal
-	// sig := make(chan os.Signal, 1)
-	// signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	// <-sig
-
-	// ptySlave.Close()
-	// ptyMaster.Close()
 }
 
 // syncBuffer is a thread-safe buffer
@@ -143,7 +138,16 @@ func drainPTY(ptyMaster *os.File, outputBuffer *syncBuffer) {
 	}
 }
 
-func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outputBuffer *syncBuffer) {
+// buildWrappedMarkerRegex matches a marker even if PTY line wrapping inserts '\n' inside it.
+func buildWrappedMarkerRegex(marker string) *regexp.Regexp {
+	parts := make([]string, 0, len(marker))
+	for _, r := range marker {
+		parts = append(parts, regexp.QuoteMeta(string(r)))
+	}
+	return regexp.MustCompile(strings.Join(parts, `\n*`))
+}
+
+func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outputBuffer *syncBuffer, bashPID int) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -168,15 +172,18 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 		fmt.Println("Cleanup >> ===== End =====")
 	}
 
-	// Generate a unique marker for this command
-	marker := fmt.Sprintf("__CMD_DONE_%d__", time.Now().UnixNano())
+	// Generate a unique marker for this command.
+	// Important: the *actual* marker includes the expanded $$, but the echoed command only contains literal $$.
+	markerNonce := time.Now().UnixNano()
+	marker := fmt.Sprintf("__CMD_DONE_%d_%d__", bashPID, markerNonce)
+	markerRegex := buildWrappedMarkerRegex(marker)
 
 	fmt.Println("Recv >> ===== Start =====")
 	fmt.Println(trim_line)
 	fmt.Println("Recv >> ===== End =====")
 
-	// Write command to PTY with unique marker
-	cmdWithMarker := trim_line + fmt.Sprintf("; echo -e '\\n%s'\n", marker)
+	// Write command to PTY with a marker whose exact final value does NOT appear in the echoed input.
+	cmdWithMarker := trim_line + fmt.Sprintf("; builtin printf '\\n%%s\\n' \"__CMD_DONE_$$_%d__\"\n", markerNonce)
 	_, err = ptyMaster.WriteString(cmdWithMarker)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
@@ -195,7 +202,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 		select {
 		case <-timeout:
 			// Timeout - send what we have
-			finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, marker)
+			finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, markerRegex)
 			writer.WriteString(finalOutput)
 			writer.Flush()
 			return
@@ -206,10 +213,10 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 			if output != "" {
 				allOutput.WriteString(output)
 
-				// Check if marker is present
-				if strings.Contains(allOutput.String(), marker) {
-					// Found marker - clean up output and send
-					finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, marker)
+				normalized := stripControlChars(allOutput.String())
+				if markerRegex.MatchString(normalized) {
+					// Found actual marker - clean up output and send
+					finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, markerRegex)
 					writer.WriteString(finalOutput)
 					writer.Flush()
 					return
@@ -234,13 +241,16 @@ func stripControlChars(s string) string {
 }
 
 // cleanOutput removes command echo and marker, leaving only actual output
-func cleanOutput(raw, cmdSent, marker string) string {
+func cleanOutput(raw, cmdSent string, markerRegex *regexp.Regexp) string {
 	fmt.Println("Raw >> ===== Start =====")
 	fmt.Printf("%q\n", raw)
 	fmt.Println("Raw >> ===== End =====")
 
 	// Strip control characters
 	cleaned := stripControlChars(raw)
+
+	// Remove the actual marker, even if PTY wrapping split it across lines.
+	cleaned = markerRegex.ReplaceAllString(cleaned, "")
 
 	// Use a byte-budget approach to skip the echoed command across wrapped lines.
 	// Initialize with the exact length of the sent command (including trailing newline).
@@ -259,19 +269,12 @@ func cleanOutput(raw, cmdSent, marker string) string {
 		if remainingEcho > 0 {
 			fmt.Println("Judge >> Echoed command (budget)")
 			remainingEcho -= len(line) + 1
-			// As noted, the echo is always followed by a newline; dropping the line is safe.
 			continue
 		}
 
 		// Skip empty lines
 		if trimmed == "" {
 			fmt.Println("Judge >> Empty line")
-			continue
-		}
-
-		// Skip the marker line
-		if strings.Contains(line, marker) {
-			fmt.Println("Judge >> Marker line")
 			continue
 		}
 
