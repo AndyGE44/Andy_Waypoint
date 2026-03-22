@@ -237,13 +237,16 @@ func (m *Manager) Cleanup() error {
 		cmd.Run() // Ignore errors - might already be unmounted
 	}
 
-	// Remove session directory
-	if err := os.RemoveAll(m.baseDir); err != nil {
-		return fmt.Errorf("failed to remove session directory: %w", err)
-	}
+	fmt.Printf("Debug: Skip directory removal as requested~\n")
+	return nil
 
-	// Remove global session info
-	return removeSessionInfo(m.sessionID)
+	// // Remove session directory
+	// if err := os.RemoveAll(m.baseDir); err != nil {
+	// 	return fmt.Errorf("failed to remove session directory: %w", err)
+	// }
+
+	// // Remove global session info
+	// return removeSessionInfo(m.sessionID)
 }
 
 // CleanupForce removes all files and unmounts the overlay for this session
@@ -274,20 +277,23 @@ func (m *Manager) CleanupForce() error {
 		fmt.Printf("Warning: Failed to force unmount: %v\n", err)
 	}
 
-	// Step 5: Try removing the directory multiple times with a backoff
-	fmt.Println("Removing session directory...")
-	if err := m.removeDirectoryWithRetry(); err != nil {
-		// Must error out if we cannot remove the directory, otherwise we might leave a broken session
-		return fmt.Errorf("failed to remove session directory after multiple attempts: %w", err)
-	}
-
-	// Step 6: Remove global session info
-	fmt.Println("Removing session info...")
-	if err := removeSessionInfo(m.sessionID); err != nil {
-		fmt.Printf("Warning: Failed to remove session info: %v\n", err)
-	}
-
+	fmt.Printf("Debug: Skip directory removal as requested~\n")
 	return nil
+
+	// // Step 5: Try removing the directory multiple times with a backoff
+	// fmt.Println("Removing session directory...")
+	// if err := m.removeDirectoryWithRetry(); err != nil {
+	// 	// Must error out if we cannot remove the directory, otherwise we might leave a broken session
+	// 	return fmt.Errorf("failed to remove session directory after multiple attempts: %w", err)
+	// }
+
+	// // Step 6: Remove global session info
+	// fmt.Println("Removing session info...")
+	// if err := removeSessionInfo(m.sessionID); err != nil {
+	// 	fmt.Printf("Warning: Failed to remove session info: %v\n", err)
+	// }
+
+	// return nil
 }
 
 // CleanupInteractive cleanup with user interaction
