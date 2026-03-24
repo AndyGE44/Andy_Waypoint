@@ -62,7 +62,7 @@ func main() {
 	// Start bash with PTY
 	cmd := exec.Command(
 		"/bin/bash",
-		"--norc",
+		// "--norc",
 		"--noprofile",
 		"--noediting",
 	)
