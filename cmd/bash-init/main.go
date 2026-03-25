@@ -13,12 +13,14 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 )
 
 // Compile regexes once at package level for performance
@@ -69,6 +71,8 @@ func main() {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: chrootDir,
 		Setsid: true,
+		Setctty: true,
+		Ctty:    0,
 	}
 	cmd.Dir = "/"
 	cmd.Stdin = ptySlave
@@ -100,7 +104,7 @@ func main() {
 			return
 		}
 
-		go handleClient(conn, ptyMaster, &ptyMutex, outputBuffer, bashPID)
+		go handleClient(conn, ptyMaster, ptySlave, &ptyMutex, outputBuffer, bashPID)
 	}
 }
 
@@ -147,7 +151,7 @@ func buildWrappedMarkerRegex(marker string) *regexp.Regexp {
 	return regexp.MustCompile(strings.Join(parts, `\n*`))
 }
 
-func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outputBuffer *syncBuffer, bashPID int) {
+func handleClient(conn net.Conn, ptyMaster *os.File, ptySlave *os.File, ptyMutex *sync.Mutex, outputBuffer *syncBuffer, bashPID int) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -191,19 +195,61 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 
 	// Wait for output with timeout
 	timeout := time.After(60000 * time.Second)
-	checkInterval := 10 * time.Millisecond
+	checkInterval := 10 * time.Millisecond // PTY scan cadence; low overhead
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
+
+	// Peer liveness watcher
+	clientClosed := make(chan struct{})
+	serverDone := make(chan struct{})
+	go func() {
+		fmt.Println("Watcher >> Start client liveness watcher")
+		// After we read the command line, server does not read further data from the client.
+		buf := make([]byte, 1)
+		for {
+			select {
+			case <-serverDone:
+				return
+			default:
+			}
+			// Short read deadline to poll liveness.
+			_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			_, err := conn.Read(buf)
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
+			// Any non-timeout error => client is closed or unreachable.
+			select {
+			case <-serverDone:
+				return
+			default:
+			}
+			fmt.Println("Watcher >> Client disconnected")
+			close(clientClosed)
+			return
+		}
+	}()
 
 	var allOutput strings.Builder
 
 	for {
 		select {
 		case <-timeout:
-			// Timeout - send what we have
+			// Timeout: terminate foreground process group (if any), then send what we have
+			fmt.Println("Killer >> Timeout reached; attempt to terminate foreground process group")
+			terminateForegroundIfAny(ptySlave, bashPID, 500*time.Millisecond)
 			finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, markerRegex)
+			fmt.Printf("Watcher >> Writing collected output after timeout: %d bytes\n", len(finalOutput))
+			close(serverDone)
 			writer.WriteString(finalOutput)
 			writer.Flush()
+			return
+
+		case <-clientClosed:
+			// Client disconnected: terminate foreground process group (if any).
+			fmt.Println("Killer >> Client disconnected; attempt to terminate foreground process group")
+			terminateForegroundIfAny(ptySlave, bashPID, 500*time.Millisecond)
+			close(serverDone)
 			return
 
 		case <-ticker.C:
@@ -216,6 +262,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptyMutex *sync.Mutex, outpu
 				if markerRegex.MatchString(normalized) {
 					// Found actual marker - clean up output and send
 					finalOutput := cleanOutput(allOutput.String(), cmdWithMarker, markerRegex)
+					close(serverDone)
 					writer.WriteString(finalOutput)
 					writer.Flush()
 					return
@@ -296,4 +343,87 @@ func cleanOutput(raw, cmdSent string, markerRegex *regexp.Regexp) string {
 	fmt.Println("Return >> ===== End =====")
 
 	return stringResults
+}
+
+// readProcTPGID parses /proc/<pid>/stat and returns tpgid.
+func readProcTPGID(bashPID int) (int, error) {
+	path := fmt.Sprintf("/proc/%d/stat", bashPID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	// Find the closing parenthesis of comm
+	content := string(data)
+	rpar := strings.LastIndex(content, ")")
+	if rpar == -1 {
+		return 0, fmt.Errorf("malformed /proc stat: missing )")
+	}
+	rem := strings.TrimSpace(content[rpar+1:])
+	fields := strings.Fields(rem)
+	// need at least: state, ppid, pgrp, session, tty_nr, tpgid
+	if len(fields) < 6 {
+		return 0, fmt.Errorf("malformed /proc stat: insufficient fields")
+	}
+	tpgidStr := fields[5]
+	tpgid, err := strconv.Atoi(tpgidStr)
+	if err != nil {
+		return 0, err
+	}
+	return tpgid, nil
+}
+
+// terminateForegroundIfAny sends SIGTERM to the current foreground process group of the PTY
+func terminateForegroundIfAny(tty *os.File, bashPID int, grace time.Duration) {
+	// Resolve bash's own process group id.
+	bashPGID, err := unix.Getpgid(bashPID)
+	if err != nil {
+		fmt.Printf("Killer >> Getpgid(bashPID=%d) error: %v\n", bashPID, err)
+		return
+	}
+	fmt.Printf("Killer >> bashPGID=%d\n", bashPGID)
+
+	// Snapshot the current foreground process group as the termination target.
+	fgPGID, err := readProcTPGID(bashPID)
+	if err != nil {
+		fmt.Printf("Killer >> readProcTPGID error: %v\n", err)
+		return
+	}
+	fmt.Printf("Killer >> foregroundPGID=%d\n", fgPGID)
+	if fgPGID == bashPGID || fgPGID <= 0 {
+		fmt.Println("Killer >> Foreground is bash or invalid; skip terminate")
+		return
+	}
+	target := fgPGID
+
+	// Send SIGTERM to the whole foreground process group.
+	if err := unix.Kill(-target, unix.SIGTERM); err != nil {
+		fmt.Printf("Killer >> SIGTERM to pgrp %d failed: %v\n", target, err)
+	} else {
+		fmt.Printf("Killer >> SIGTERM sent to pgrp %d\n", target)
+	}
+
+	// Optional graceful window before a hard kill.
+	if grace > 0 {
+		time.Sleep(grace)
+
+		// Re-check: only hard kill if the same group is still in foreground and still alive.
+		currentFG, errFG := readProcTPGID(bashPID)
+		if errFG != nil {
+			fmt.Printf("Killer >> readProcTPGID (post-term) error: %v\n", errFG)
+			return
+		}
+		fmt.Printf("Killer >> foregroundPGID (post-term)=%d\n", currentFG)
+		if currentFG == target {
+			if err := unix.Kill(-target, 0); err == nil {
+				fmt.Printf("Killer >> pgrp %d still alive; sending SIGKILL\n", target)
+				if errK := unix.Kill(-target, unix.SIGKILL); errK != nil {
+					fmt.Printf("Killer >> SIGKILL to pgrp %d failed: %v\n", target, errK)
+				}
+			} else {
+				fmt.Printf("Killer >> pgrp %d not alive or kill -0 error: %v\n", target, err)
+			}
+		} else {
+			fmt.Printf("Killer >> Foreground changed (%d -> %d); skip SIGKILL\n", target, currentFG)
+		}
+	}
 }
