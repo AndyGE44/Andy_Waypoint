@@ -1,6 +1,6 @@
 module github.com/Alex-XJK/checkpoint-lite
 
-go 1.23.1
+go 1.25.0
 
 require github.com/creack/pty v1.1.24
 
