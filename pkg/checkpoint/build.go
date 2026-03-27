@@ -5,6 +5,7 @@ package checkpoint
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,7 +25,7 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 		if capture {
 			cmd.Stdout = &stdout
 		} else if quiet {
-			cmd.Stdout = nil
+			cmd.Stdout = io.Discard
 		} else {
 			cmd.Stdout = os.Stdout
 		}

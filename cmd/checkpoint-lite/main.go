@@ -123,7 +123,8 @@ func main() {
 
 		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir, quiet)
 		if err != nil {
-			fmt.Printf("Error building sandbox image: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error building sandbox image: %v\n", err)
+			os.Exit(1)
 		}
 
 		if quiet {
