@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -157,13 +158,30 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptySlave *os.File, ptyMutex
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
-	// Read one command from client
-	line, err := reader.ReadString('\n')
+	// Read one length-prefixed command from client.
+	// Protocol:
+	//   <decimal byte length>\n
+	//   <raw command bytes>
+	lenLine, err := reader.ReadString('\n')
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
 		return
 	}
-	trim_line := strings.TrimSpace(line)
+	lenText := strings.TrimSpace(lenLine)
+	payloadLen, err := strconv.Atoi(lenText)
+	if err != nil || payloadLen < 0 {
+		fmt.Fprintf(os.Stderr, "invalid command length %q: %v\n", lenText, err)
+		return
+	}
+	fmt.Printf("Protocol >> Length [%d]\n", payloadLen)
+
+	payload := make([]byte, payloadLen)
+	_, err = io.ReadFull(reader, payload)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read command payload: %v\n", err)
+		return
+	}
+	commandPayload := string(payload)
 
 	ptyMutex.Lock()
 	defer ptyMutex.Unlock()
@@ -182,11 +200,16 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptySlave *os.File, ptyMutex
 	markerRegex := buildWrappedMarkerRegex(marker)
 
 	fmt.Println("Recv >> ===== Start =====")
-	fmt.Println(trim_line)
+	fmt.Print(commandPayload)
 	fmt.Println("Recv >> ===== End =====")
 
-	// Write command to PTY with a marker whose exact final value does NOT appear in the echoed input.
-	cmdWithMarker := trim_line + fmt.Sprintf("; builtin printf '\\n%%s\\n' \"__CMD_DONE_$$_%d__\"\n", markerNonce)
+	// Write command to PTY with a marker command appended on a new line.
+	// This preserves multi-line shell constructs (e.g., heredoc) in the payload.
+	cmdWithMarker := commandPayload
+	if !strings.HasSuffix(cmdWithMarker, "\n") {
+		cmdWithMarker += "\n"
+	}
+	cmdWithMarker += fmt.Sprintf("builtin printf '\\n%%s\\n' \"__CMD_DONE_$$_%d__\"\n", markerNonce)
 	_, err = ptyMaster.WriteString(cmdWithMarker)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "write error: %v\n", err)
@@ -195,7 +218,7 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptySlave *os.File, ptyMutex
 
 	// Wait for output with timeout
 	timeout := time.After(60000 * time.Second)
-	checkInterval := 10 * time.Millisecond // PTY scan cadence; low overhead
+	checkInterval := 5 * time.Millisecond // PTY scan cadence; low overhead
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 

@@ -13,7 +13,7 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.5.1"
+var Version = "v0.5.2-dev"
 
 func main() {
 	if len(os.Args) < 2 {

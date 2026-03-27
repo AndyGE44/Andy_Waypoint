@@ -36,7 +36,11 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (string, error)
 	if m.shellPid != ShellNotEnabled && m.shellSocket != "" {
 		// If shell is enabled, execute command through the shell's sandbox
 		socketPath := m.shellSocket
-		commandString := command + " " + strings.Join(args, " ") + "\n"
+		commandString := command
+		if len(args) > 0 {
+			commandString += " " + strings.Join(args, " ")
+		}
+		commandString += "\n"
 		output, err := execCommand(socketPath, commandString)
 		if err != nil {
 			return "", fmt.Errorf("failed to execute command: %w", err)

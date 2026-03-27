@@ -22,6 +22,11 @@ func execCommand(socketPath, command string) (string, error) {
 
 	// Send command
 	writer := bufio.NewWriter(conn)
+	_, err = writer.WriteString(fmt.Sprintf("%d\n", len(command)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write command length: %v\n", err)
+		return "", err
+	}
 	_, err = writer.WriteString(command)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write command: %v\n", err)
