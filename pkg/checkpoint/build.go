@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+ 	"golang.org/x/sys/unix"
 )
 
 func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
@@ -93,29 +94,57 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 		}
 	}
 
-	// 6. Create a normal file to mimic /dev/null
+	// 6. Ensure basic char devices exist
 	devDir := filepath.Join(workspaceDir, "dev")
 	if err := os.MkdirAll(devDir, 0755); err != nil {
 		return fmt.Errorf("failed to create dev directory: %w", err)
 	}
-	devNullPath := filepath.Join(devDir, "null")
-	if fi, err := os.Lstat(devNullPath); err == nil {
-		if fi.Mode()&os.ModeType != 0 {
-			if err := os.Remove(devNullPath); err != nil {
-				return fmt.Errorf("failed to replace /dev/null with regular file: %w", err)
+
+	type devSpec struct {
+		name       string
+		major      uint32
+		minor      uint32
+		perm       os.FileMode
+	}
+	devices := []devSpec{
+		{"null", 1, 3, 0o666},
+		{"zero", 1, 5, 0o666},
+		{"random", 1, 8, 0o666},
+		{"urandom", 1, 9, 0o666},
+	}
+
+	// Helper to (re)create a char device with given major/minor
+	makeChar := func(path string, major, minor uint32, perm os.FileMode) error {
+		// Remove existing non-char file
+		if fi, err := os.Lstat(path); err == nil {
+			if fi.Mode()&os.ModeDevice == 0 || fi.Mode()&os.ModeCharDevice == 0 {
+				if rmErr := os.Remove(path); rmErr != nil {
+					return fmt.Errorf("failed to remove existing %s: %w", path, rmErr)
+				}
 			}
 		}
+		// Create node if missing
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			dev := unix.Mkdev(major, minor)
+			mode := uint32(unix.S_IFCHR | uint32(perm&0o777))
+			if err := unix.Mknod(path, mode, int(dev)); err != nil {
+				return fmt.Errorf("mknod %s failed (major=%d minor=%d): %w", path, major, minor, err)
+			}
+		}
+		// Ensure permissions are as requested (umask-safe)
+		if err := os.Chmod(path, perm); err != nil {
+			return fmt.Errorf("chmod %s failed: %w", path, err)
+		}
+		// Ensure ownership root:root (best-effort)
+		_ = os.Chown(path, 0, 0)
+		return nil
 	}
-	devNullFile, err := os.OpenFile(devNullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return fmt.Errorf("failed to create /dev/null regular file: %w", err)
-	}
-	if err := devNullFile.Close(); err != nil {
-		return fmt.Errorf("failed to close /dev/null regular file: %w", err)
-	}
-	// Ensure perm is 0666 (umask-safe)
-	if chErr := os.Chmod(devNullPath, 0666); chErr != nil {
-		return fmt.Errorf("failed to chmod /dev/null fallback file: %w", chErr)
+
+	for _, d := range devices {
+		p := filepath.Join(devDir, d.name)
+		if err := makeChar(p, d.major, d.minor, d.perm); err != nil {
+			return err
+		}
 	}
 
 	return nil
