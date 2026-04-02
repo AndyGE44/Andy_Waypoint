@@ -17,6 +17,7 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
 		"--tcp-established",
+		"--ghost-limit", "8388608",
 		"-vv", "-o", "dump.log",
 	)
 
