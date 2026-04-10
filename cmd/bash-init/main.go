@@ -273,6 +273,10 @@ func handleClient(conn net.Conn, ptyMaster *os.File, ptySlave *os.File, ptyMutex
 			fmt.Println("Killer >> Client disconnected; attempt to terminate foreground process group")
 			terminateForegroundIfAny(ptySlave, bashPID, 500*time.Millisecond)
 			close(serverDone)
+			fmt.Println("Watcher >> Raw buffered outputs before terminated ")
+			fmt.Println("Watcher >> ===== Start =====")
+			fmt.Printf("%s\n", allOutput.String())
+			fmt.Println("Watcher >> ===== End =====")
 			return
 
 		case <-ticker.C:
