@@ -5,15 +5,15 @@ package checkpoint
 import (
 	"bufio"
 	"bytes"
-	"io"
 	"fmt"
+	"golang.org/x/sys/unix"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
- 	"golang.org/x/sys/unix"
 )
 
 func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
@@ -100,11 +100,30 @@ func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 		return fmt.Errorf("failed to create dev directory: %w", err)
 	}
 
+	// Create a mimic /dev/shm with 0x1777
+	shmDir := filepath.Join(devDir, "shm")
+	if fi, err := os.Lstat(shmDir); err == nil {
+		if !fi.IsDir() {
+			if rmErr := os.Remove(shmDir); rmErr != nil {
+				return fmt.Errorf("failed to remove existing %s: %w", shmDir, rmErr)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to stat %s: %w", shmDir, err)
+	}
+	if err := os.MkdirAll(shmDir, 0o1777); err != nil {
+		return fmt.Errorf("failed to create shm directory: %w", err)
+	}
+	if err := os.Chmod(shmDir, 0o1777); err != nil {
+		return fmt.Errorf("failed to chmod %s: %w", shmDir, err)
+	}
+	_ = os.Chown(shmDir, 0, 0)
+
 	type devSpec struct {
-		name       string
-		major      uint32
-		minor      uint32
-		perm       os.FileMode
+		name  string
+		major uint32
+		minor uint32
+		perm  os.FileMode
 	}
 	devices := []devSpec{
 		{"null", 1, 3, 0o666},
