@@ -130,6 +130,9 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// (so that the process can continue running in the new overlay)
 	if pid != SkipMemoryCheckpoint {
 		currentCriuDir := filepath.Join(m.baseDir, checkpointID, "criu")
+		if errPrep := m.prepareCheckpointRestore(pid, currentCriuDir); errPrep != nil {
+			return fmt.Errorf("failed to prepare memory restore into new overlay: %w", errPrep)
+		}
 		newPID, errMem := m.restoreMemoryState(pid, currentCriuDir)
 		if errMem != nil {
 			return fmt.Errorf("memory restore into new overlay failed: %w", errMem)
@@ -157,10 +160,12 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
+	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
+
 	// If the previous checkpoint contains process, we need to first kill it, so that mountpoint can be released.
 	if checkpointMetadata.PID != SkipMemoryCheckpoint {
-		if err := m.killProcess(checkpointMetadata.PID); err != nil {
-			return 0, fmt.Errorf("failed to kill original process %d: %w", checkpointMetadata.PID, err)
+		if err := m.prepareCheckpointRestore(checkpointMetadata.PID, previousCriuPath); err != nil {
+			return 0, fmt.Errorf("failed to prepare restore for process %d: %w", checkpointMetadata.PID, err)
 		}
 	}
 
@@ -193,7 +198,6 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		fmt.Println("Skipping memory restore as per user request")
 		return SkipMemoryCheckpoint, nil
 	}
-	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
 	newPID, errMem := m.restoreMemoryState(checkpointMetadata.PID, previousCriuPath)
 	if errMem != nil {
 		return 0, fmt.Errorf("memory restore failed: %w", errMem)
