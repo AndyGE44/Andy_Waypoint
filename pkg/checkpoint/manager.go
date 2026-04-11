@@ -96,6 +96,8 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		}
 	}
 
+	// Unmount runtime pseudo filesystems first, then overlay mount.
+	m.unmountRuntimeFS(m.workOverlay)
 	// Unmount current overlay to ensure filesystem consistency
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -169,6 +171,8 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		}
 	}
 
+	// Unmount runtime pseudo filesystems first, then overlay mount.
+	m.unmountRuntimeFS(m.workOverlay)
 	// Unmount current overlay for future remount
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -241,6 +245,7 @@ func (m *Manager) Cleanup() error {
 
 	// Unmount overlay
 	if m.workOverlay != "" {
+		m.unmountRuntimeFS(m.workOverlay)
 		cmd := exec.Command("umount", m.workOverlay)
 		cmd.Run() // Ignore errors - might already be unmounted
 	}
