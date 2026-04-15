@@ -52,6 +52,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// Disable canonical mode on the slave PTY so long single-line commands
+	// are not truncated by line discipline limits (commonly ~4096 bytes).
+	// Keep ECHO enabled because output cleaning logic depends on echoed input.
+	// Also disable ECHOCTL so control chars are not shown as caret notation
+	// (e.g., "^J"), which pollutes captured command output.
+	if err := setNonCanonicalWithEcho(ptySlave); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to set non-canonical PTY mode: %v\n", err)
+	}
 
 	// Create Unix domain socket for command communication
 	os.Remove(socketPath) // Clean up old socket
@@ -107,6 +115,22 @@ func main() {
 
 		go handleClient(conn, ptyMaster, ptySlave, &ptyMutex, outputBuffer, bashPID)
 	}
+}
+
+func setNonCanonicalWithEcho(tty *os.File) error {
+	fd := int(tty.Fd())
+	tio, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return err
+	}
+	// Disable canonical mode only; keep echoing enabled.
+	tio.Lflag &^= unix.ICANON
+	// Do not render control chars via caret notation (e.g., "^J").
+	tio.Lflag &^= unix.ECHOCTL
+	// Ensure read returns as soon as at least one byte is available.
+	tio.Cc[unix.VMIN] = 1
+	tio.Cc[unix.VTIME] = 0
+	return unix.IoctlSetTermios(fd, unix.TCSETS, tio)
 }
 
 // syncBuffer is a thread-safe buffer
