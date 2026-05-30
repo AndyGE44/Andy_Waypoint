@@ -4,10 +4,12 @@ package checkpoint
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -54,6 +56,10 @@ func (m *Manager) InitEnvironment(originalDir string) (string, error) {
 //	workDir: work directory
 //	mountPoint: where to mount the overlay
 func (m *Manager) mountOverlay(lowerDir []string, upperDir, workDir, mountPoint string) error {
+	// Runtime pseudo filesystems are mounted under the merged mountpoint.
+	// Tear them down before replacing the overlay mount.
+	m.unmountRuntimeFS(mountPoint)
+
 	// Unmount if already mounted
 	exec.Command("umount", mountPoint).Run()
 
@@ -65,11 +71,61 @@ func (m *Manager) mountOverlay(lowerDir []string, upperDir, workDir, mountPoint 
 		return fmt.Errorf("mount command failed: %w", err)
 	}
 
+	if err := m.mountRuntimeFS(mountPoint); err != nil {
+		_ = exec.Command("umount", mountPoint).Run()
+		return fmt.Errorf("mount runtime filesystems failed: %w", err)
+	}
+
 	return nil
+}
+
+func (m *Manager) mountRuntimeFS(mountPoint string) error {
+	if strings.TrimSpace(mountPoint) == "" {
+		return nil
+	}
+	type runtimeMount struct {
+		relPath string
+		fsType  string
+		source  string
+	}
+	mounts := []runtimeMount{
+		{relPath: "proc", fsType: "proc", source: "proc"},
+		{relPath: "sys", fsType: "sysfs", source: "sys"},
+	}
+	for _, rm := range mounts {
+		target := filepath.Join(mountPoint, rm.relPath)
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			return fmt.Errorf("mkdir runtime mount target %s failed: %w", target, err)
+		}
+		if err := unix.Mount(rm.source, target, rm.fsType, 0, ""); err != nil {
+			if err == syscall.EBUSY {
+				continue
+			}
+			return fmt.Errorf("mount %s on %s failed: %w", rm.fsType, target, err)
+		}
+	}
+	return nil
+}
+
+func (m *Manager) unmountRuntimeFS(mountPoint string) {
+	if strings.TrimSpace(mountPoint) == "" {
+		return
+	}
+	for _, rel := range []string{"proc", "sys"} {
+		target := filepath.Join(mountPoint, rel)
+		if err := unix.Unmount(target, 0); err != nil {
+			if err == syscall.EINVAL || err == syscall.ENOENT {
+				continue
+			}
+			_ = unix.Unmount(target, unix.MNT_DETACH)
+		}
+	}
 }
 
 // forceUnmountOverlays unmounts all overlay filesystems in the session
 func (m *Manager) forceUnmountOverlays() error {
+	m.unmountRuntimeFS(m.workOverlay)
+
 	// Unmount the main work overlay
 	if m.workOverlay != "" {
 		if err := m.forceUnmount(m.workOverlay); err != nil {

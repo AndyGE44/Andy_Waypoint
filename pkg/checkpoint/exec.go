@@ -22,6 +22,11 @@ func execCommand(socketPath, command string) (string, error) {
 
 	// Send command
 	writer := bufio.NewWriter(conn)
+	_, err = writer.WriteString(fmt.Sprintf("%d\n", len(command)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write command length: %v\n", err)
+		return "", err
+	}
 	_, err = writer.WriteString(command)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write command: %v\n", err)
@@ -30,7 +35,7 @@ func execCommand(socketPath, command string) (string, error) {
 	writer.Flush()
 
 	// Read all output until the connection closes
-	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(60000 * time.Second))
 	output, err := io.ReadAll(conn)
 	if err != nil && err != io.EOF {
 		fmt.Fprintf(os.Stderr, "failed to read output: %v\n", err)

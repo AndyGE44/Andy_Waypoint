@@ -36,7 +36,11 @@ func (m *Manager) ExecuteCommand(command string, args ...string) (string, error)
 	if m.shellPid != ShellNotEnabled && m.shellSocket != "" {
 		// If shell is enabled, execute command through the shell's sandbox
 		socketPath := m.shellSocket
-		commandString := command + " " + strings.Join(args, " ") + "\n"
+		commandString := command
+		if len(args) > 0 {
+			commandString += " " + strings.Join(args, " ")
+		}
+		commandString += "\n"
 		output, err := execCommand(socketPath, commandString)
 		if err != nil {
 			return "", fmt.Errorf("failed to execute command: %w", err)
@@ -92,6 +96,8 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 		}
 	}
 
+	// Unmount runtime pseudo filesystems first, then overlay mount.
+	m.unmountRuntimeFS(m.workOverlay)
 	// Unmount current overlay to ensure filesystem consistency
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -126,6 +132,9 @@ func (m *Manager) CreateCheckpointNew(pid int, checkpointID string) error {
 	// (so that the process can continue running in the new overlay)
 	if pid != SkipMemoryCheckpoint {
 		currentCriuDir := filepath.Join(m.baseDir, checkpointID, "criu")
+		if errPrep := m.prepareCheckpointRestore(pid, currentCriuDir); errPrep != nil {
+			return fmt.Errorf("failed to prepare memory restore into new overlay: %w", errPrep)
+		}
 		newPID, errMem := m.restoreMemoryState(pid, currentCriuDir)
 		if errMem != nil {
 			return fmt.Errorf("memory restore into new overlay failed: %w", errMem)
@@ -153,13 +162,17 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		return 0, fmt.Errorf("failed to load checkpoint metadata: %w", err)
 	}
 
+	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
+
 	// If the previous checkpoint contains process, we need to first kill it, so that mountpoint can be released.
 	if checkpointMetadata.PID != SkipMemoryCheckpoint {
-		if err := m.killProcess(checkpointMetadata.PID); err != nil {
-			return 0, fmt.Errorf("failed to kill original process %d: %w", checkpointMetadata.PID, err)
+		if err := m.prepareCheckpointRestore(checkpointMetadata.PID, previousCriuPath); err != nil {
+			return 0, fmt.Errorf("failed to prepare restore for process %d: %w", checkpointMetadata.PID, err)
 		}
 	}
 
+	// Unmount runtime pseudo filesystems first, then overlay mount.
+	m.unmountRuntimeFS(m.workOverlay)
 	// Unmount current overlay for future remount
 	exec.Command("umount", m.workOverlay).Run()
 
@@ -189,7 +202,6 @@ func (m *Manager) RestoreCheckpointNew(checkpointID string) (int, error) {
 		fmt.Println("Skipping memory restore as per user request")
 		return SkipMemoryCheckpoint, nil
 	}
-	previousCriuPath := filepath.Join(m.baseDir, checkpointID, "criu")
 	newPID, errMem := m.restoreMemoryState(checkpointMetadata.PID, previousCriuPath)
 	if errMem != nil {
 		return 0, fmt.Errorf("memory restore failed: %w", errMem)
@@ -218,6 +230,8 @@ func (m *Manager) ListCheckpoints() ([]string, error) {
 
 // Cleanup removes all files and unmounts the overlay for this session
 func (m *Manager) Cleanup() error {
+	loadConfig()
+
 	// Cleanup shell related resources if shell enabled
 	if m.shellPid != ShellNotEnabled {
 		if err := m.killProcess(m.shellPid); err != nil {
@@ -233,8 +247,14 @@ func (m *Manager) Cleanup() error {
 
 	// Unmount overlay
 	if m.workOverlay != "" {
+		m.unmountRuntimeFS(m.workOverlay)
 		cmd := exec.Command("umount", m.workOverlay)
 		cmd.Run() // Ignore errors - might already be unmounted
+	}
+
+	if PreserveSessionOnCleanup {
+		fmt.Printf("Preserving session directory and session info for %s\n", m.sessionID)
+		return nil
 	}
 
 	// Remove session directory
@@ -248,6 +268,8 @@ func (m *Manager) Cleanup() error {
 
 // CleanupForce removes all files and unmounts the overlay for this session
 func (m *Manager) CleanupForce() error {
+	loadConfig()
+
 	fmt.Printf("Starting forceful cleanup for session %s...\n", m.sessionID)
 
 	// Step 1: Kill processes using files in this directory
@@ -272,6 +294,11 @@ func (m *Manager) CleanupForce() error {
 	fmt.Println("Force unmounting all mounts in session directory...")
 	if err := m.forceUnmountAll(); err != nil {
 		fmt.Printf("Warning: Failed to force unmount: %v\n", err)
+	}
+
+	if PreserveSessionOnCleanup {
+		fmt.Printf("Preserving session directory and session info for %s\n", m.sessionID)
+		return nil
 	}
 
 	// Step 5: Try removing the directory multiple times with a backoff

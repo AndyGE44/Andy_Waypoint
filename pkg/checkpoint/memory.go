@@ -16,6 +16,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 	cmd := exec.Command("criu", "dump",
 		"-t", fmt.Sprintf("%d", pid),
 		"-D", criuPath,
+		"--tcp-established",
+		"--ghost-limit", "8388608",
 		"-vv", "-o", "dump.log",
 	)
 
@@ -39,17 +41,12 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 }
 
 func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
-	// Kill the original process if it exists
-	err := m.killProcess(pid)
-	if err != nil {
-		return -1, fmt.Errorf("failed to kill original process %d: %w", pid, err)
-	}
-
 	// Use CRIU to restore the process
 	// Notice: Cannot use '--shell-job' because it will try to attach to the original PTY, which does not exist anymore.
 	cmd := exec.Command(
 		"criu", "restore",
 		"--images-dir", criuPath,
+		"--tcp-established",
 		"-vv", "-o", "restore.log",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{

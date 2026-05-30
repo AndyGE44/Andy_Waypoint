@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.2 — Robust Shell & Cleanup Refinements
+**Reliability-focused polish for shell sessions, restore preparation, and cleanup**
+- Improved shell-session command handling for longer and multi-line commands.
+- Made shell command cancellation and timeout handling more predictable for disconnected clients.
+- Improved process cleanup before restore to reduce CRIU restore conflicts.
+- Added runtime filesystem and device setup improvements for Dockerfile-built environments.
+- Added `preserve_session_on_cleanup` for users who want cleanup to unmount and stop processes while keeping session files for debugging.
+
 ## v0.5.0 — Isolated Shell Sessions & Dockerfile-Based Environment Build
 **Persistent shell isolation and environment construction workflow**
 - Designed and implemented an RPC-based Shell Session Manager to maintain persistent, isolated shell states across checkpoints and restores.

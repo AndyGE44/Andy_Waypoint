@@ -66,14 +66,14 @@ See [our architecture decision record](./tech_selection_note.md) for more detail
 - Linux system with root privileges
 - CRIU installed and configured
 - OverlayFS support (most modern Linux distributions)
-- Go 1.23 (for building from source)
+- Go 1.25 or the version listed in `go.mod` (for building from source)
 - Optional: `buildah` for the build from Dockerfile approach (since v0.5.0)
 
 ### Install Go (just for reference)
 ```bash
-# Install Go (version 1.23.1)
-wget https://go.dev/dl/go1.23.1.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.1.linux-amd64.tar.gz
+# Install Go (version 1.25.0)
+wget https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.25.0.linux-amd64.tar.gz
 
 # Add to ~/.bashrc or ~/.profile
 export PATH=$PATH:/usr/local/go/bin
@@ -111,7 +111,7 @@ go build -o bash_init cmd/bash-init/main.go
 
 ```bash
 ./checkpoint-lite version
-# Output: checkpoint-lite version v0.5.0
+# Output: checkpoint-lite version v0.5.2
 ```
 
 ## Usage 🗂
@@ -122,12 +122,13 @@ You can create a configuration file to set global options. Example content:
 ```json
 {
   "sessions_dir": "/custom/path/checkpoint-sessions",
-  "bash_init_src": "/custom/compiled/bash_init"
+  "bash_init_src": "/custom/compiled/bash_init",
+  "preserve_session_on_cleanup": false
 }
 ```
 
-Noticed the configuration takes effect in the following order of precedence:
-1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`, `CHECKPOINT_BASH_INIT_SRC`, etc. (if set)
+Configuration takes effect in the following order of precedence:
+1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`, `CHECKPOINT_BASH_INIT_SRC`, `CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP`, etc. (if set)
 2. Load from configuration file (if exists):
    - Explicit `CHECKPOINT_CONFIG` environment variable
    - Binary-side config: `./config.json` (same dir as executable)
@@ -245,9 +246,10 @@ sudo ./checkpoint-lite list a1b2c3d4e5f6g7h8
 ```bash
 sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
 ```
-If this basic version of the cleanup command fails, our **checkpoint-lite** will automatically instruct you on 
-further actions. Namely, you can use:
-- `--force` to forcefully remove and unmount all the related resources.
+If this basic version of the cleanup command fails, **checkpoint-lite** will automatically suggest further actions. You can use:
+- `--force` to forcefully remove and unmount all related resources.
+
+For debugging, set `preserve_session_on_cleanup` to `true` in the config file, or set `CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP=true`. Cleanup will still stop processes and unmount resources, but it will keep the session directory and session registry entry for inspection.
 
 ## Demo 🎥
 
@@ -308,8 +310,8 @@ sudo ./checkpoint-lite build /home/docker-tasks/context
 ## Save the session ID for future operations!
 
 # Run some commands in the provided shell session
-sudo ./checkpoint-lite abc123def456 cd /app
-sudo ./checkpoint-lite abc123def456 export ENV_VAR=start
+sudo ./checkpoint-lite exec abc123def456 cd /app
+sudo ./checkpoint-lite exec abc123def456 export ENV_VAR=start
 
 # Create a checkpoint of the shell session
 sudo ./checkpoint-lite create abc123def456 before-run

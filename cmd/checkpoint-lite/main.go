@@ -13,7 +13,7 @@ import (
 	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
 )
 
-var Version = "v0.5.1"
+var Version = "v0.5.2"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -123,7 +123,8 @@ func main() {
 
 		overlayPath, bashPid, err := manager.BuildEnvironment(dockerfileDir, quiet)
 		if err != nil {
-			fmt.Printf("Error building sandbox image: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error building sandbox image: %v\n", err)
+			os.Exit(1)
 		}
 
 		if quiet {
