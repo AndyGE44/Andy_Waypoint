@@ -59,7 +59,7 @@ unnecessary features like network isolation, security policies, and registry ope
 
 ### Go Language Technology Decision
 The tool is implemented in Go for its simplicity, performance, and strong concurrency support.
-See [our architecture decision record](./tech_selection_note.md) for more details on why Go was chosen.
+See [our architecture decision record](./docs/tech_selection_note.md) for more details on why Go was chosen.
 
 ## Installation 🔧
 
@@ -375,6 +375,8 @@ sudo ./waypoint cleanup abc123def456
 ```
 
 ## Technical Details ⌨️
+
+![Technical Architecture Diagram](./docs/waypoint-v060.drawio.png)
 
 ### OverlayFS Initialization
 - **Lower Layer**: Original workspace (read-only)

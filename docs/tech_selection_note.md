@@ -98,4 +98,4 @@ Go provides the optimal balance of performance, development efficiency, and syst
 ---
 *Architect: Alex Jiakai Xu*  
 *Decision made: August 1, 2025*  
-*Review date: August 3, 2025*  
+*Review date: August 5, 2025*  
