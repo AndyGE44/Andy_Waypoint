@@ -59,15 +59,15 @@ const SessionInfoDir = "/tmp/waypoint-sessions-info"
 // DefaultSessionsDir is the default directory for storing checkpoint sessions.
 var DefaultSessionsDir = "/tmp/waypoint-sessions"
 
-// DefaultWaypointInitSrc is the default source path for the waypoint_init binary used for shell sessions.
-var DefaultWaypointInitSrc = "./waypoint_init"
+// DefaultBashInitSrc is the default source path for the bash_init binary used for shell sessions.
+var DefaultBashInitSrc = "./bash_init"
 
 // PreserveSessionOnCleanup skips final removal after cleanup unmounts and kills resources.
 var PreserveSessionOnCleanup = false
 
 type config struct {
 	SessionsDir              string `json:"sessions_dir,omitempty"`
-	WaypointInitSrc          string `json:"waypoint_init_src,omitempty"`
+	BashInitSrc              string `json:"bash_init_src,omitempty"`
 	PreserveSessionOnCleanup bool   `json:"preserve_session_on_cleanup,omitempty"`
 }
 
@@ -86,8 +86,8 @@ func loadConfig() {
 	if v := os.Getenv("WAYPOINT_SESSIONS_DIR"); v != "" {
 		DefaultSessionsDir = v
 	}
-	if v := os.Getenv("WAYPOINT_INIT_SRC"); v != "" {
-		DefaultWaypointInitSrc = v
+	if v := os.Getenv("WAYPOINT_BASH_INIT_SRC"); v != "" {
+		DefaultBashInitSrc = v
 	}
 	if v := os.Getenv("WAYPOINT_PRESERVE_SESSION_ON_CLEANUP"); v != "" {
 		if parsed, err := strconv.ParseBool(v); err == nil {
@@ -151,8 +151,8 @@ func loadConfig() {
 				if cfg.SessionsDir != "" && os.Getenv("WAYPOINT_SESSIONS_DIR") == "" {
 					DefaultSessionsDir = cfg.SessionsDir
 				}
-				if cfg.WaypointInitSrc != "" && os.Getenv("WAYPOINT_INIT_SRC") == "" {
-					DefaultWaypointInitSrc = cfg.WaypointInitSrc
+				if cfg.BashInitSrc != "" && os.Getenv("WAYPOINT_BASH_INIT_SRC") == "" {
+					DefaultBashInitSrc = cfg.BashInitSrc
 				}
 				if os.Getenv("WAYPOINT_PRESERVE_SESSION_ON_CLEANUP") == "" {
 					PreserveSessionOnCleanup = cfg.PreserveSessionOnCleanup

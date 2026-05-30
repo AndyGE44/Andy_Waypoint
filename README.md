@@ -106,14 +106,14 @@ sudo criu check
 git clone https://github.com/Alex-XJK/waypoint.git
 cd waypoint
 go build -o waypoint cmd/waypoint/main.go
-go build -o waypoint_init cmd/waypoint-init/main.go
+go build -o bash_init cmd/bash-init/main.go
 ```
 
 ### Check Waypoint Version
 
 ```bash
 ./waypoint version
-# Output: waypoint version v0.5.2
+# Output: waypoint version v0.6.0
 ```
 
 ## Usage 🗂
@@ -124,13 +124,13 @@ You can create a configuration file to set global options. Example content:
 ```json
 {
   "sessions_dir": "/custom/path/waypoint-sessions",
-  "waypoint_init_src": "/custom/compiled/waypoint_init",
+  "bash_init_src": "/custom/compiled/bash_init",
   "preserve_session_on_cleanup": false
 }
 ```
 
 Configuration takes effect in the following order of precedence:
-1. The direct environment variable `WAYPOINT_SESSIONS_DIR`, `WAYPOINT_INIT_SRC`, `WAYPOINT_PRESERVE_SESSION_ON_CLEANUP`, etc. (if set)
+1. The direct environment variable `WAYPOINT_SESSIONS_DIR`, `WAYPOINT_BASH_INIT_SRC`, `WAYPOINT_PRESERVE_SESSION_ON_CLEANUP`, etc. (if set)
 2. Load from configuration file (if exists):
    - Explicit `WAYPOINT_CONFIG` environment variable
    - Binary-side config: `./config.json` (same dir as executable)
