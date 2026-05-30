@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Manager manages runtime checkpoint sessions, the main struct.
@@ -61,9 +62,13 @@ var DefaultSessionsDir = "/tmp/checkpoint-sessions"
 // DefaultBashInitSrc is the default source path for the bash_init binary used for shell sessions.
 var DefaultBashInitSrc = "./bash_init"
 
+// PreserveSessionOnCleanup skips final removal after cleanup unmounts and kills resources.
+var PreserveSessionOnCleanup = false
+
 type config struct {
-	SessionsDir string `json:"sessions_dir,omitempty"`
-	BashInitSrc string `json:"bash_init_src,omitempty"`
+	SessionsDir              string `json:"sessions_dir,omitempty"`
+	BashInitSrc              string `json:"bash_init_src,omitempty"`
+	PreserveSessionOnCleanup bool   `json:"preserve_session_on_cleanup,omitempty"`
 }
 
 // loadConfig loads custom configuration.
@@ -83,6 +88,11 @@ func loadConfig() {
 	}
 	if v := os.Getenv("CHECKPOINT_BASH_INIT_SRC"); v != "" {
 		DefaultBashInitSrc = v
+	}
+	if v := os.Getenv("CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			PreserveSessionOnCleanup = parsed
+		}
 	}
 
 	// 2) Config file path determination
@@ -143,6 +153,9 @@ func loadConfig() {
 				}
 				if cfg.BashInitSrc != "" && os.Getenv("CHECKPOINT_BASH_INIT_SRC") == "" {
 					DefaultBashInitSrc = cfg.BashInitSrc
+				}
+				if os.Getenv("CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP") == "" {
+					PreserveSessionOnCleanup = cfg.PreserveSessionOnCleanup
 				}
 			}
 		}

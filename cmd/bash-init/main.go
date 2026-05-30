@@ -73,13 +73,12 @@ func main() {
 	// Start bash with PTY
 	cmd := exec.Command(
 		"/bin/bash",
-		// "--norc",
 		"--noprofile",
 		"--noediting",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Chroot: chrootDir,
-		Setsid: true,
+		Chroot:  chrootDir,
+		Setsid:  true,
 		Setctty: true,
 		Ctty:    0,
 	}

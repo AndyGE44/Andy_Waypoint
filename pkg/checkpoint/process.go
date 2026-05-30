@@ -30,7 +30,6 @@ func (m *Manager) killProcess(pid int) error {
 	// Mimic my "__kill_original_process"'s soft and hard kill behavior
 	if !m.processExists(pid) {
 		// Process does not exist, probably already terminated
-		fmt.Printf("DEBUG >> Skip Killing: [%d] already disappeared\n", pid)
 		return nil
 	}
 
@@ -40,10 +39,8 @@ func (m *Manager) killProcess(pid int) error {
 		return fmt.Errorf("failed to retrieve process %d: %w", pid, err)
 	}
 
-	fmt.Printf("DEBUG >> Killing: [%d]\n", pid)
 	if err := process.Signal(syscall.SIGTERM); err != nil {
 		// If graceful termination fails, try SIGKILL
-		fmt.Printf("DEBUG >> Force Killing: [%d] (fallback)\n", pid)
 		if err := process.Signal(syscall.SIGKILL); err != nil {
 			return fmt.Errorf("failed to kill process %d: %w", pid, err)
 		}
@@ -58,7 +55,6 @@ func (m *Manager) killProcess(pid int) error {
 	}
 
 	// If still running, force kill
-	fmt.Printf("DEBUG >> Force Killing: [%d]\n", pid)
 	return process.Signal(syscall.SIGKILL)
 }
 
@@ -84,7 +80,7 @@ func (m *Manager) prepareCheckpointRestore(rootPID int, criuPath string) error {
 		}
 		if ownerPID > 0 {
 			pidsToKill[ownerPID] = struct{}{}
-			fmt.Printf("DEBUG >> Checking kill: [%d] belongs to [%d]\n", taskID, ownerPID)
+			// fmt.Printf("DEBUG >> Checking kill: [%d] belongs to [%d]\n", taskID, ownerPID)
 		}
 	}
 
@@ -94,7 +90,6 @@ func (m *Manager) prepareCheckpointRestore(rootPID int, criuPath string) error {
 	}
 	sort.Ints(killList)
 	for _, pid := range killList {
-		fmt.Printf("DEBUG >> Operating kill: [%d]\n", pid)
 		if err := m.killProcess(pid); err != nil {
 			return fmt.Errorf("failed to kill blocking process %d: %w", pid, err)
 		}
