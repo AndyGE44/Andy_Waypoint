@@ -1,8 +1,8 @@
 package main
 
-// checkpoint-lite: A lightweight process checkpointing and restoration tool
+// waypoint: A lightweight process checkpointing and restoration tool
 //
-// GitHub Repository: https://github.com/Alex-XJK/checkpoint-lite.git
+// GitHub Repository: https://github.com/Alex-XJK/waypoint.git
 // Designed and developed by Alex Jiakai Xu (https://alex-xjk.github.io/), DAPLab @ Columbia University (https://daplab.cs.columbia.edu/)
 
 import (
@@ -10,14 +10,14 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/Alex-XJK/checkpoint-lite/pkg/checkpoint"
+	"github.com/Alex-XJK/waypoint/pkg/waypoint"
 )
 
 var Version = "v0.5.2"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: checkpoint-lite <command> [args...]")
+		fmt.Println("Usage: waypoint <command> [args...]")
 		fmt.Println("Commands:")
 		fmt.Println("  init <work-directory> [--quiet] [--shell]    - Initialize environment")
 		fmt.Println("  build <dockerfile-directory> [--quiet]       - Build environment from Dockerfile")
@@ -59,7 +59,7 @@ func main() {
 		}
 
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession()
+		manager, sessionID, err := waypoint.NewManagerWithSession()
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
@@ -115,7 +115,7 @@ func main() {
 		}
 
 		// Create a new manager with a random session
-		manager, sessionID, err := checkpoint.NewManagerWithSession()
+		manager, sessionID, err := waypoint.NewManagerWithSession()
 		if err != nil {
 			fmt.Printf("Error creating session: %v\n", err)
 			os.Exit(1)
@@ -147,7 +147,7 @@ func main() {
 		sessionID := os.Args[2]
 		checkpointID := os.Args[3]
 
-		pid := checkpoint.PidNotProvided
+		pid := waypoint.PidNotProvided
 		err := error(nil)
 		if len(os.Args) > 4 {
 			pid, err = strconv.Atoi(os.Args[4])
@@ -157,7 +157,7 @@ func main() {
 			}
 		}
 
-		manager, err := checkpoint.LoadManager(sessionID)
+		manager, err := waypoint.LoadManager(sessionID)
 		if err != nil {
 			fmt.Printf("Error loading session: %v\n", err)
 			os.Exit(1)
@@ -177,7 +177,7 @@ func main() {
 		sessionID := os.Args[2]
 		checkpointID := os.Args[3]
 
-		manager, err := checkpoint.LoadManager(sessionID)
+		manager, err := waypoint.LoadManager(sessionID)
 		if err != nil {
 			fmt.Printf("Error loading session: %v\n", err)
 			os.Exit(1)
@@ -201,7 +201,7 @@ func main() {
 		command := os.Args[3]
 		args := os.Args[4:]
 
-		manager, err := checkpoint.LoadManager(sessionID)
+		manager, err := waypoint.LoadManager(sessionID)
 		if err != nil {
 			fmt.Printf("Error loading session: %v\n", err)
 			os.Exit(1)
@@ -221,7 +221,7 @@ func main() {
 		}
 		sessionID := os.Args[2]
 
-		manager, err := checkpoint.LoadManager(sessionID)
+		manager, err := waypoint.LoadManager(sessionID)
 		if err != nil {
 			fmt.Printf("Error loading session: %v\n", err)
 			os.Exit(1)
@@ -248,7 +248,7 @@ func main() {
 		}
 		sessionID := os.Args[2]
 
-		manager, err := checkpoint.LoadManager(sessionID)
+		manager, err := waypoint.LoadManager(sessionID)
 		if err != nil {
 			fmt.Printf("Error loading session: %v\n", err)
 			os.Exit(1)
@@ -264,14 +264,14 @@ func main() {
 		} else {
 			if err := manager.CleanupInteractive(); err != nil {
 				fmt.Printf("Error cleaning up session: %v\n", err)
-				fmt.Printf("Try: sudo ./checkpoint-lite cleanup %s --force\n", sessionID)
+				fmt.Printf("Try: sudo ./waypoint cleanup %s --force\n", sessionID)
 				os.Exit(1)
 			}
 		}
 		fmt.Printf("Session '%s' cleaned up successfully\n", sessionID)
 
 	case "version", "--version", "-v":
-		fmt.Printf("checkpoint-lite version %s\n", Version)
+		fmt.Printf("waypoint version %s\n", Version)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])

@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // pty-rpc-shell: https://github.com/Alex-XJK/pty-rpc-shell.git
 

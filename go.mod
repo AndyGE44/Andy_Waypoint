@@ -1,4 +1,4 @@
-module github.com/Alex-XJK/checkpoint-lite
+module github.com/Alex-XJK/waypoint
 
 go 1.25.0
 

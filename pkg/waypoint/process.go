@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // Process management utilities
 

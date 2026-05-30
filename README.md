@@ -1,11 +1,13 @@
-# checkpoint-lite
+# Waypoint
 
 A lightweight checkpoint/restore tool that captures both filesystem and memory state with minimal overhead. 
 Built on top of CRIU and OverlayFS for fast, isolated process state management.
 
+> **Naming note:** Waypoint was previously called **Checkpoint-lite**. Some older blog posts, videos, and public announcements may still use the Checkpoint-lite name; they refer to the same project lineage.
+
 ## Overview 🌟
 
-`checkpoint-lite` provides a simple interface to checkpoint and restore running processes while capturing all their 
+`waypoint` provides a simple interface to checkpoint and restore running processes while capturing all their 
 memory state, live terminal sessions, and filesystem changes. Unlike heavyweight container solutions, this tool focuses
 on minimal overhead by directly orchestrating existing kernel features and redesigning terminal session management.
 
@@ -26,7 +28,7 @@ on minimal overhead by directly orchestrating existing kernel features and redes
 After analysis of existing checkpoint/restore solutions using our analysis tool [StateFork](https://github.com/Alex-XJK/StateFork)
 and [StraceTools](https://github.com/Alex-XJK/stracetools), we identified that many traditional solutions often bundle 
 unnecessary features like network isolation, security policies, and registry operations. 
-`checkpoint-lite` takes a minimalist approach:
+`waypoint` takes a minimalist approach:
 
 1. **Filesystem State**: Uses OverlayFS to capture directory changes without copying entire filesystems
 2. **Memory State**: Leverages CRIU for process memory and execution state
@@ -45,7 +47,7 @@ unnecessary features like network isolation, security policies, and registry ope
          └───────────┬───────────┘
                      │
             ┌─────────────────┐
-            │ checkpoint-lite │
+            │   waypoint      │
             │   Session Mgr   │
             └─────────────────┘
 ```
@@ -101,17 +103,17 @@ sudo criu check
 ### Build from Source
 
 ```bash
-git clone https://github.com/Alex-XJK/checkpoint-lite.git
-cd checkpoint-lite
-go build -o checkpoint-lite cmd/checkpoint-lite/main.go
-go build -o bash_init cmd/bash-init/main.go
+git clone https://github.com/Alex-XJK/waypoint.git
+cd waypoint
+go build -o waypoint cmd/waypoint/main.go
+go build -o waypoint_init cmd/waypoint-init/main.go
 ```
 
-### Check Checkpoint-Lite Version
+### Check Waypoint Version
 
 ```bash
-./checkpoint-lite version
-# Output: checkpoint-lite version v0.5.2
+./waypoint version
+# Output: waypoint version v0.5.2
 ```
 
 ## Usage 🗂
@@ -121,19 +123,19 @@ go build -o bash_init cmd/bash-init/main.go
 You can create a configuration file to set global options. Example content:
 ```json
 {
-  "sessions_dir": "/custom/path/checkpoint-sessions",
-  "bash_init_src": "/custom/compiled/bash_init",
+  "sessions_dir": "/custom/path/waypoint-sessions",
+  "waypoint_init_src": "/custom/compiled/waypoint_init",
   "preserve_session_on_cleanup": false
 }
 ```
 
 Configuration takes effect in the following order of precedence:
-1. The direct environment variable `CHECKPOINT_SESSIONS_DIR`, `CHECKPOINT_BASH_INIT_SRC`, `CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP`, etc. (if set)
+1. The direct environment variable `WAYPOINT_SESSIONS_DIR`, `WAYPOINT_INIT_SRC`, `WAYPOINT_PRESERVE_SESSION_ON_CLEANUP`, etc. (if set)
 2. Load from configuration file (if exists):
-   - Explicit `CHECKPOINT_CONFIG` environment variable
+   - Explicit `WAYPOINT_CONFIG` environment variable
    - Binary-side config: `./config.json` (same dir as executable)
-   - User config: `$XDG_CONFIG_HOME/checkpoint-lite/config.json` or `~/.checkpoint-lite/config.json`
-   - System config: `/etc/checkpoint-lite/config.json`
+   - User config: `$XDG_CONFIG_HOME/waypoint/config.json` or `~/.waypoint/config.json`
+   - System config: `/etc/waypoint/config.json`
 3. Default settings.
 
 ### 1. Initialize Environment
@@ -143,14 +145,14 @@ Configuration takes effect in the following order of precedence:
 Create a managed environment for your application:
 
 ```bash
-sudo ./checkpoint-lite init /path/to/your/workspace
+sudo ./waypoint init /path/to/your/workspace
 ```
 
 Output:
 ```
 Environment initialized!
 Session ID: a1b2c3d4e5f6g7h8
-Work in this directory: /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
+Work in this directory: /tmp/waypoint-sessions/a1b2c3d4e5f6g7h8/work
 
 Save the session ID for future operations!
 ```
@@ -168,7 +170,7 @@ You can alternatively build a sandbox environment directly with the `build` comm
 This will set up a sandboxed environment with the provided Dockerfile and start a bash session in it.
 
 ```bash
-sudo ./checkpoint-lite build /path/to/your/Dockerfile-directory
+sudo ./waypoint build /path/to/your/Dockerfile-directory
 ```
 
 Output:
@@ -176,7 +178,7 @@ Output:
 (Some build output from buildah...)
 Sandbox environment built successfully!
 Session ID: a1b2c3d4e5f6g7h8
-Work in this directory: /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
+Work in this directory: /tmp/waypoint-sessions/a1b2c3d4e5f6g7h8/work
 Sandbox bash PID: 1234
 
 Save the session ID for future operations!
@@ -195,7 +197,7 @@ in his TBench integration for v0.2.0.
 The simplest way is to just run your application in the provided work directory.
 
 ```bash
-cd /tmp/checkpoint-sessions/a1b2c3d4e5f6g7h8/work
+cd /tmp/waypoint-sessions/a1b2c3d4e5f6g7h8/work
 ./your-application &
 # Note the PID, e.g., 1234
 ```
@@ -208,7 +210,7 @@ Since v0.5.0, if you used the `--shell` option during initialization or the `bui
 shell session in the managed environment. You can directly run your bash commands there without worrying about the workspace isolation.
 
 ```bash
-sudo ./checkpoint-lite exec a1b2c3d4e5f6g7h8 cat hello_world.txt
+sudo ./waypoint exec a1b2c3d4e5f6g7h8 cat hello_world.txt
 ```
 
 Note that the `exec` command can be used all the time, regardless of whether you started a shell session or not.
@@ -220,7 +222,7 @@ If you don't have a shell session, the `exec` will simply help you execute the c
 ### 3. Create Checkpoints
 
 ```bash
-sudo ./checkpoint-lite create a1b2c3d4e5f6g7h8 checkpoint-name 1234
+sudo ./waypoint create a1b2c3d4e5f6g7h8 checkpoint-name 1234
 ```
 
 Special options:
@@ -232,122 +234,122 @@ Special options:
 ### 4. Restore From Checkpoint
 
 ```bash
-sudo ./checkpoint-lite restore a1b2c3d4e5f6g7h8 checkpoint-name
+sudo ./waypoint restore a1b2c3d4e5f6g7h8 checkpoint-name
 ```
 
 ### 5. List Available Checkpoints
 
 ```bash
-sudo ./checkpoint-lite list a1b2c3d4e5f6g7h8
+sudo ./waypoint list a1b2c3d4e5f6g7h8
 ```
 
 ### 6. Clean Up Session
 
 ```bash
-sudo ./checkpoint-lite cleanup a1b2c3d4e5f6g7h8
+sudo ./waypoint cleanup a1b2c3d4e5f6g7h8
 ```
-If this basic version of the cleanup command fails, **checkpoint-lite** will automatically suggest further actions. You can use:
+If this basic version of the cleanup command fails, **waypoint** will automatically suggest further actions. You can use:
 - `--force` to forcefully remove and unmount all related resources.
 
-For debugging, set `preserve_session_on_cleanup` to `true` in the config file, or set `CHECKPOINT_PRESERVE_SESSION_ON_CLEANUP=true`. Cleanup will still stop processes and unmount resources, but it will keep the session directory and session registry entry for inspection.
+For debugging, set `preserve_session_on_cleanup` to `true` in the config file, or set `WAYPOINT_PRESERVE_SESSION_ON_CLEANUP=true`. Cleanup will still stop processes and unmount resources, but it will keep the session directory and session registry entry for inspection.
 
 ## Demo 🎥
 
-- **Direct CLI Usage** – Using checkpoint-lite directly from the terminal: https://youtu.be/fbNlGyIndjc
-- **StateFork Integration** – Using checkpoint-lite as a backend inside StateFork’s interactive shell: https://youtu.be/oe8ONkqr2a8
+- **Direct CLI Usage** – Using waypoint directly from the terminal: https://youtu.be/fbNlGyIndjc
+- **StateFork Integration** – Using waypoint as a backend inside StateFork’s interactive shell: https://youtu.be/oe8ONkqr2a8
 
 ## Example Workflow 🧩
 
 ### Example 1: Checkpointing a Simulator Application
 ```bash
 # Initialize environment
-sudo ./checkpoint-lite init /home/user/myproject
+sudo ./waypoint init /home/user/myproject
 ## Environment initialized!
 ## Session ID: abc123def456
-## Work in this directory: /tmp/checkpoint-sessions/abc123def456/work
+## Work in this directory: /tmp/waypoint-sessions/abc123def456/work
 ##
 ## Save the session ID for future operations!
 
 # Run application in managed directory
-cd /tmp/checkpoint-sessions/abc123def456/work
+cd /tmp/waypoint-sessions/abc123def456/work
 ./my-simulator --config config.json &
 ## [1] 5678
 
 # Create checkpoints after some computation
-sudo ./checkpoint-lite create abc123def456 simulation-step-100 5678
+sudo ./waypoint create abc123def456 simulation-step-100 5678
 ## Checkpoint 'simulation-step-100' created successfully
 
 # Continue running, create another checkpoint
-sudo ./checkpoint-lite create abc123def456 simulation-step-200 5678
+sudo ./waypoint create abc123def456 simulation-step-200 5678
 ## Checkpoint 'simulation-step-200' created successfully
 
 # List available checkpoints
-sudo ./checkpoint-lite list abc123def456
+sudo ./waypoint list abc123def456
 ## Available checkpoints:
 ##   simulation-step-100
 ##   simulation-step-200
 
 # Restore to earlier state
-sudo ./checkpoint-lite restore abc123def456 simulation-step-100
+sudo ./waypoint restore abc123def456 simulation-step-100
 ## Checkpoint 'simulation-step-100' restored, new PID: 5678
 
 # Clean up when done
-sudo ./checkpoint-lite cleanup abc123def456
+sudo ./waypoint cleanup abc123def456
 ## Session 'abc123def456' cleaned up successfully
 ```
 
 ### Example 2: Checkpointing with a Shell Session
 ```bash
 # Initialize environment using a Dockerfile
-sudo ./checkpoint-lite build /home/docker-tasks/context
+sudo ./waypoint build /home/docker-tasks/context
 ## STEP 1/3: FROM ubuntu-24-04:latest
 ## (Some build output from buildah...)
 ## Sandbox environment built successfully!
 ## Session ID: abc123def456
-## Work in this directory: /mydata/checkpoint-sessions/abc123def456/work
+## Work in this directory: /mydata/waypoint-sessions/abc123def456/work
 ## Sandbox bash PID: 123456
 ##
 ## Save the session ID for future operations!
 
 # Run some commands in the provided shell session
-sudo ./checkpoint-lite exec abc123def456 cd /app
-sudo ./checkpoint-lite exec abc123def456 export ENV_VAR=start
+sudo ./waypoint exec abc123def456 cd /app
+sudo ./waypoint exec abc123def456 export ENV_VAR=start
 
 # Create a checkpoint of the shell session
-sudo ./checkpoint-lite create abc123def456 before-run
+sudo ./waypoint create abc123def456 before-run
 ## Checkpoint 'before-run' created successfully
 
 # Continue running some commands
-sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+sudo ./waypoint exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
 ## VALUE: start PWD: /app
-sudo ./checkpoint-lite exec abc123def456 ./run-app.sh
-sudo ./checkpoint-lite exec abc123def456 export ENV_VAR=finished
-sudo ./checkpoint-lite exec abc123def456 cd ./results
-sudo ./checkpoint-lite exec abc123def456 ls
+sudo ./waypoint exec abc123def456 ./run-app.sh
+sudo ./waypoint exec abc123def456 export ENV_VAR=finished
+sudo ./waypoint exec abc123def456 cd ./results
+sudo ./waypoint exec abc123def456 ls
 ## (Output from ls, e.g., result1.txt result2.txt)
 
 # Create another checkpoint
-sudo ./checkpoint-lite create abc123def456 after-run
+sudo ./waypoint create abc123def456 after-run
 ## Checkpoint 'after-run' created successfully
 
 # Continue running some commands
-sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+sudo ./waypoint exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
 ## VALUE: finished PWD: /app/results
 
 # Restore to earlier state
-sudo ./checkpoint-lite restore abc123def456 before-run
+sudo ./waypoint restore abc123def456 before-run
 ## Checkpoint 'before-run' restored, new PID: 123456
-sudo ./checkpoint-lite exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
+sudo ./waypoint exec abc123def456 "echo VALUE: \$ENV_VAR PWD: \$(pwd)"
 ## VALUE: start PWD: /app
 
 # Clean up when done
-sudo ./checkpoint-lite cleanup abc123def456
+sudo ./waypoint cleanup abc123def456
 ```
 
 ## Directory Structure 🗃
 
 ```
-/custom/path/checkpoint-sessions/   # Configured sessions directory
+/custom/path/waypoint-sessions/   # Configured sessions directory
     ├── a1b2c3d4e5f6g7h8/           # App A's session
     │   ├── current/                # Current OverlayFS mounts
     │   │   ├── upper/              # Overlay upper directory
@@ -367,7 +369,7 @@ sudo ./checkpoint-lite cleanup abc123def456
      	├── temp/
       	└── work/
   
- /tmp/checkpoint-sessions-info/     # Global session registry
+ /tmp/waypoint-sessions-info/     # Global session registry
     ├── a1b2c3d4e5f6g7h8.json       # "SessionInfo" for App A
     └── x9y8z7w6v5u4t3s2.json       # "SessionInfo" for App B
 ```
@@ -404,7 +406,7 @@ Each session gets:
 - **RPC server**: A controlling process that manages a PTY session and listens for commands via Unix domain socket
 - **Isolated bash core**: A long-running bash session in a `chroot`-isolated environment that executes commands
 - **RPC-style communication**: The bash server receives commands, forwards them to the bash core, and returns results, allowing stateful command execution across checkpoints
-- **RPC client**: The main checkpoint-lite process acts as a client to send commands to the bash server
+- **RPC client**: The main waypoint process acts as a client to send commands to the bash server
 
 > Credit: This is an iterated version of the command injection method implemented by 
 [Georgios Liargkovas](https://liargkovas.com/) in the v0.4.0 series. It was first designed and trialed by 
@@ -418,7 +420,7 @@ Each session gets:
 
 ## Citation
 
-If you use checkpoint-lite in academic research, please cite:
+If you use waypoint in academic research, please cite:
 ```bibtex
 @misc{xu2025systemsfoundationsagenticexploration,
       title={Toward Systems Foundations for Agentic Exploration}, 

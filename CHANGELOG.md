@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.0 — Waypoint Rename
+**Project rename and public identity update**
+- Renamed the project from **Checkpoint-lite** to **Waypoint**. Older blog posts, videos, and public announcements may still use the Checkpoint-lite name.
+
 ## v0.5.2 — Robust Shell & Cleanup Refinements
 **Reliability-focused polish for shell sessions, restore preparation, and cleanup**
 - Improved shell-session command handling for longer and multi-line commands.

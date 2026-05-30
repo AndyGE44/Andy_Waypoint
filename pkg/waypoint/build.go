@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // Dockerfile-based build process
 
@@ -205,24 +205,24 @@ func PrepareNetworkDeps(rootfs string) error {
 	return nil
 }
 
-// StartShell launches a new chroot-embedded bash_init process at the given workDir.
+// StartShell launches a new chroot-embedded waypoint_init process at the given workDir.
 // On success, it updates the session info with the shell PID and socket path for later use.
 func (m *Manager) StartShell(workDir string) (int, string, error) {
-	// Locate bash_init binary
-	bashInitSrc := DefaultBashInitSrc
-	if _, err := os.Stat(bashInitSrc); os.IsNotExist(err) {
-		return ShellNotEnabled, "", fmt.Errorf("bash_init binary not found at %s", bashInitSrc)
+	// Locate waypoint_init binary
+	waypointInitSrc := DefaultWaypointInitSrc
+	if _, err := os.Stat(waypointInitSrc); os.IsNotExist(err) {
+		return ShellNotEnabled, "", fmt.Errorf("waypoint_init binary not found at %s", waypointInitSrc)
 	}
 
 	socketPath := filepath.Join(m.baseDir, "temp", fmt.Sprintf("shell_%s.sock", m.sessionID))
 
-	// Judge /bin/bash pre-requisite for bash_init
+	// Judge /bin/bash pre-requisite for waypoint_init
 	bashPath := filepath.Join(workDir, "bin/bash")
 	if _, err := os.Stat(bashPath); os.IsNotExist(err) {
 		return ShellNotEnabled, "", fmt.Errorf("bash pre-requisite not met: %s does not exist", bashPath)
 	}
 
-	cmd := exec.Command(bashInitSrc, socketPath, workDir)
+	cmd := exec.Command(waypointInitSrc, socketPath, workDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session = no controlling TTY
 	}
@@ -243,9 +243,9 @@ func (m *Manager) StartShell(workDir string) (int, string, error) {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
-	// Start the bash_init process in the background
+	// Start the waypoint_init process in the background
 	if err := cmd.Start(); err != nil {
-		return ShellNotEnabled, "", fmt.Errorf("failed to start bash_init: %w", err)
+		return ShellNotEnabled, "", fmt.Errorf("failed to start waypoint_init: %w", err)
 	}
 
 	// Update shell PID and socket path in session info
@@ -376,7 +376,7 @@ func (m *Manager) BuildEnvironment(dockerfileDir string, quiet bool) (string, in
 		return "", 0, fmt.Errorf("failed to initialize overlay environment: %w", overlayErr)
 	}
 
-	// Launch new chroot-embedded bash_init in background to set up the environment
+	// Launch new chroot-embedded waypoint_init in background to set up the environment
 	pid, _, err := m.StartShell(workDir)
 	if err != nil {
 		return workDir, pid, fmt.Errorf("failed to start shell in environment: %w", err)
