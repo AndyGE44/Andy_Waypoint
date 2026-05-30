@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "checkpoint-lite"
+title: "Waypoint"
 message: "If you use this software, please cite it using the metadata from this file."
 type: software
 authors:
@@ -16,7 +16,7 @@ authors:
 identifiers:
   - type: doi
     value: 10.48550/arXiv.2510.05556
-repository-code: 'https://github.com/Alex-XJK/checkpoint-lite'
+repository-code: 'https://github.com/Alex-XJK/waypoint'
 abstract: >-
   A lightweight checkpoint/restore tool that captures both
   filesystem and memory state with minimal overhead. Built

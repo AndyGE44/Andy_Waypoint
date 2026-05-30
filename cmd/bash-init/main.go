@@ -34,7 +34,7 @@ var (
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("Usage: bash_init <socket-path> <chroot-dir>")
-		fmt.Println("Example: bash_init /tmp/bash_cmd.sock /checkpoint-sessions/xyz/work")
+		fmt.Println("Example: bash_init /tmp/bash_cmd.sock /tmp/waypoint-sessions/xyz/work")
 		os.Exit(1)
 	}
 

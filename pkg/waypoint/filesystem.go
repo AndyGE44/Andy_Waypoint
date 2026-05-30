@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // All filesystem-related operations
 

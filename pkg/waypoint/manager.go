@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // Top-level checkpoint manager functions
 

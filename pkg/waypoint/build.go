@@ -1,4 +1,4 @@
-package checkpoint
+package waypoint
 
 // Dockerfile-based build process
 
@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
@@ -14,11 +13,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func BuildFromDockerfile(dockerfileDir, workspaceDir string, quiet bool) error {
 	lowercaseBasename := strings.ToLower(filepath.Base(dockerfileDir))
-	imageTag := fmt.Sprintf("ckptlite_%s:%d", lowercaseBasename, time.Now().Unix())
+	imageTag := fmt.Sprintf("waypoint_%s:%d", lowercaseBasename, time.Now().Unix())
 
 	run := func(cmd *exec.Cmd, capture bool) (string, error) {
 		var stdout bytes.Buffer
