@@ -3,8 +3,6 @@
 A lightweight checkpoint/restore tool that captures both filesystem and memory state with minimal overhead. 
 Built on top of CRIU and OverlayFS for fast, isolated process state management.
 
-> **Naming note:** Waypoint was previously called **Checkpoint-lite**. Some older blog posts, videos, and public announcements may still use the Checkpoint-lite name; they refer to the same project lineage.
-
 ## Overview 🌟
 
 `waypoint` provides a simple interface to checkpoint and restore running processes while capturing all their 
