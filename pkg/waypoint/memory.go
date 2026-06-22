@@ -18,6 +18,7 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-D", criuPath,
 		"--tcp-established",
 		"--manage-cgroups=ignore",
+		"--file-locks",
 		"--ghost-limit", "8388608",
 		"-vv", "-o", "dump.log",
 	)
@@ -49,6 +50,7 @@ func (m *Manager) restoreMemoryState(pid int, criuPath string) (int, error) {
 		"--images-dir", criuPath,
 		"--tcp-established",
 		"--manage-cgroups=ignore",
+		"--file-locks",
 		"--restore-detached",
 		"-vv", "-o", "restore.log",
 	)
