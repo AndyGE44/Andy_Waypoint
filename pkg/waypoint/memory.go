@@ -19,6 +19,8 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"--tcp-established",
 		"--manage-cgroups=ignore",
 		"--file-locks",
+		"--force-irmap",
+		"--link-remap",
 		"--ghost-limit", "8388608",
 		"-vv", "-o", "dump.log",
 	)
