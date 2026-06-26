@@ -18,6 +18,13 @@ func (m *Manager) createMemoryCheckpoint(pid int, criuPath string) error {
 		"-D", criuPath,
 		"--tcp-established",
 		"--ghost-limit", "8388608",
+		// Node 22 keeps inotify watches and unlinked-but-open files (e.g. the
+		// bundled mock-api's working files). --force-irmap lets CRIU resolve
+		// inotify watches via the inode reverse-map when the path is gone, and
+		// --link-remap lets it dump deleted files that still have open fds.
+		// Without both, dumping the shop process tree fails.
+		"--force-irmap",
+		"--link-remap",
 		"-vv", "-o", "dump.log",
 	)
 
